@@ -27,7 +27,7 @@ def ordered_cases(workspace: Workspace, dataset, data_dir, seed):
             group = str(info.get("page_attribute", {}).get("data_source", "unknown"))
             groups[group].append(case)
     else:
-        for folder in sorted((snapshot / "dev").glob("*/*")):
+        for folder in sorted((snapshot / spec["split"]).glob("*/*")):
             if not folder.is_dir():
                 continue
             subject, doc = (folder.parent.name, folder.name)
@@ -39,7 +39,7 @@ def ordered_cases(workspace: Workspace, dataset, data_dir, seed):
                 if end != start + 1:
                     continue
                 refs = [folder / "json" / f"{doc}_page_{n}.json" for n in (start, end)]
-                if not any(read(ref) for ref in refs):
+                if spec["evaluator"] is not None and not any(read(ref) for ref in refs):
                     continue
                 name = f"{doc}_page_{start}-{end}"
                 groups[subject].append(
@@ -47,9 +47,11 @@ def ordered_cases(workspace: Workspace, dataset, data_dir, seed):
                         "id": f"{subject}/{name}",
                         "images": [str(first), str(second)],
                         "prediction": f"{subject}/{name}.md",
-                        "references": [str(ref) for ref in refs],
+                        "references": [str(ref) for ref in refs] if spec["evaluator"] else [],
                         "reference_markdown": [
-                            str(folder / "mds" / f"{doc}_{n}.md") for n in (start, end)
+                            str(folder / "mds" / f"{doc}_{n}.md")
+                            for n in (start, end)
+                            if spec["evaluator"] is not None
                         ],
                     }
                 )

@@ -183,3 +183,85 @@ def normalize_numbers(value):
     if isinstance(value, list):
         return [normalize_numbers(item) for item in value]
     return value
+
+
+def summarize_runtime(destination, plan):
+    """Report measured attempts, including failed/partial inference, without GT scores."""
+    from .io import digest, seal, verify_seal
+
+    evidence_path = destination / "inference.json"
+    if not evidence_path.is_file():
+        raise ValueError("Tempos reais do Acessilia ausentes; execute predict.")
+    verify_seal(evidence_path)
+    evidence = read(evidence_path)
+    if evidence.get("plan_sha256") != digest(destination / "plan.json"):
+        raise ValueError("Evidência de inferência pertence a outro plano.")
+    rows = evidence["cases"]
+    timings = [
+        json.loads(line) for line in (destination / "timings.jsonl").read_text().splitlines()
+    ]
+    if timings != rows:
+        raise ValueError("Tempos divergentes da evidência de inferência selada.")
+    expected = {case["id"]: len(case["images"]) for case in plan["cases"]}
+    ids = [row["id"] for row in rows]
+    if len(ids) != len(set(ids)) or not set(ids) <= expected.keys():
+        raise ValueError("Casos de inferência inválidos.")
+    if any(
+        row["status"] not in {"ok", "failed", "timeout"}
+        or not math.isfinite(row["seconds"])
+        or row["seconds"] < 0
+        or row["pages"] != expected[row["id"]]
+        for row in rows
+    ):
+        raise ValueError("Medições de inferência inválidas.")
+    seconds = sorted(row["seconds"] for row in rows)
+    total = sum(seconds)
+    successful = [row for row in rows if row["status"] == "ok"]
+    attempted_pages = sum(row["pages"] for row in rows)
+    successful_pages = sum(row["pages"] for row in successful)
+    summary = {
+        "dataset": plan["dataset"],
+        "dataset_revision": plan["dataset_revision"],
+        "profile": "runtime",
+        "overall": None,
+        "quality_metrics": None,
+        "quality_reason": "Perfil de execução sem avaliação de referências.",
+        "status": evidence["status"],
+        "plan_sha256": digest(destination / "plan.json"),
+        "inference_sha256": digest(evidence_path),
+        "coverage": {
+            "planned_cases": len(expected),
+            "attempted_cases": len(rows),
+            "unattempted_cases": len(expected) - len(rows),
+            "unique_pages": plan["unique_pages"],
+        },
+        "runtime": {
+            "successful_cases": len(successful),
+            "failures": len(rows) - len(successful),
+            "timeouts": sum(row["status"] == "timeout" for row in rows),
+            "success_rate": len(successful) / len(rows) if rows else None,
+            "total_seconds": total,
+            "mean_seconds_per_window": total / len(rows) if rows else None,
+            "p50_seconds_per_window": seconds[math.ceil(len(rows) * 0.5) - 1] if rows else None,
+            "p95_seconds_per_window": seconds[math.ceil(len(rows) * 0.95) - 1] if rows else None,
+            "attempted_pages": attempted_pages,
+            "successful_page_occurrences": successful_pages,
+            "successful_pages_per_minute": successful_pages * 60 / total if total else None,
+        },
+    }
+    artifacts = destination / "runtime-report"
+    write(artifacts / "summary.json", summary)
+    (artifacts / "report.md").write_text(
+        "# Execução do Acessilia\n\n"
+        f"Dataset: {plan['dataset']} @ {plan['dataset_revision']}\n\n"
+        "Sem métricas de qualidade ou Overall neste perfil.\n\n"
+        "Tempos incluem startup do processo, preparação da entrada, cache e serviços; "
+        "não medem apenas o modelo nem GPU-hora. Percentis incluem falhas e timeouts. "
+        "Páginas na vazão contam ocorrências nas janelas; janelas vizinhas podem "
+        "compartilhar páginas. Falhas consomem tempo, mas não contam na vazão de sucesso.\n\n"
+        + "```json\n"
+        + json.dumps(summary, indent=2, ensure_ascii=False)
+        + "\n```\n",
+        encoding="utf-8",
+    )
+    seal(artifacts / "summary.json")

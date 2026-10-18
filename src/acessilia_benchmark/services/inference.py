@@ -10,6 +10,7 @@ from ..core.runs import freeze_predictions, load_plan
 from ..core.workspace import Workspace
 from ..io import digest, local_path, read, seal, write
 from ..processes import git, run_logged
+from ..reporting import summarize_runtime
 from .doctor import resolve_python
 
 
@@ -106,6 +107,7 @@ def predict(
         evidence["status"] = "ok" if completed else "failed"
         write(evidence_path, evidence)
         seal(evidence_path)
+        summarize_runtime(destination, plan)
     if not completed:
         raise ValueError(
             "Inferência incompleta; consulte inference.json e logs. Não será pontuada."

@@ -45,7 +45,7 @@ def main():
     sub.add_argument("--timeout", type=float, default=1800)
     sub = commands.add_parser("evaluate")
     sub.add_argument("--run", required=True)
-    sub.add_argument("--profile", choices=["basic", "full"], default="basic")
+    sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
     sub.add_argument("--timeout", type=float, default=1800)
     sub = commands.add_parser("doctor")
     sub.add_argument("--acessilia-repo", type=Path)

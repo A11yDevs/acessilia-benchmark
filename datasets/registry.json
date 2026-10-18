@@ -39,6 +39,20 @@
       "expected_files": 1653,
       "expected_bytes": 1488543603,
       "usage": "Dataset apenas para pesquisa; uso comercial excluído pelo aviso oficial. Apache-2.0 do código não se estende automaticamente aos documentos."
+    },
+    "drdocbench-test": {
+      "repo_id": "2077AIDataFoundation/DrDocBench",
+      "revision": "7a2bc3882dff68e883fb55d10d4df22865ce2b07",
+      "split": "test",
+      "source": "https://huggingface.co/datasets/2077AIDataFoundation/DrDocBench",
+      "evaluator": null,
+      "allow_patterns": [
+        "README.md",
+        "test/**"
+      ],
+      "expected_files": 510,
+      "expected_bytes": 86463082,
+      "usage": "Anotações CC0-1.0; documentos originais sujeitos aos direitos e condições dos titulares. Uso pretendido: pesquisa e avaliação."
     }
   }
 }

@@ -14,6 +14,8 @@ def prepare(workspace: Workspace, dataset, name, data_dir, limit, seed, fixture=
     destination = workspace.run_dir(name)
     if destination.exists():
         raise ValueError("Rodada já existe; escolha outro nome para preservar os resultados.")
+    if fixture and load_registry(workspace)[dataset]["evaluator"] is None:
+        raise ValueError("Dataset sem referências; smoke indisponível. Use prepare e predict.")
     verify(dataset, load_registry(workspace)[dataset], data_dir)
     cases = list(ordered_cases(workspace, dataset, data_dir, seed))
     if fixture:

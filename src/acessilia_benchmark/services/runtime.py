@@ -16,6 +16,8 @@ EVALUATION_PYTHON_VERSION = "3.11.17"
 
 def evaluator(workspace: Workspace, dataset):
     spec = load_registry(workspace)[dataset]["evaluator"]
+    if spec is None:
+        raise ValueError("Dataset sem referências; use evaluate --profile runtime.")
     repo = workspace.root / "vendor" / spec["directory"]
     if not (repo / ".git").exists() or git(repo, "rev-parse", "HEAD") != spec["commit"]:
         raise ValueError("Avaliador ausente ou revisão diferente; execute setup.")
@@ -36,6 +38,8 @@ def setup(workspace: Workspace):
         raise ValueError("Instale uv: https://docs.astral.sh/uv/getting-started/installation/")
     for dataset, dataset_spec in load_registry(workspace).items():
         spec = dataset_spec["evaluator"]
+        if spec is None:
+            continue
         repo = workspace.root / "vendor" / spec["directory"]
         if not repo.exists():
             repo.parent.mkdir(parents=True, exist_ok=True)

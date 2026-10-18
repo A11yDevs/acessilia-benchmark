@@ -10,7 +10,7 @@ from ..core.runs import load_plan, validate_predictions
 from ..core.workspace import Workspace
 from ..io import digest, read, seal, write
 from ..processes import run_logged
-from ..reporting import summarize
+from ..reporting import summarize, summarize_runtime
 from .render_tools import environment as render_environment
 from .runtime import evaluator, runtime_versions, uv_environment
 
@@ -47,12 +47,20 @@ def config_for(destination, plan, profile):
     }
 
 
-def evaluate(workspace: Workspace, name, profile, timeout: float = 1800):
-    if profile not in {"basic", "full"}:
-        raise ValueError("Perfil inválido; use basic ou full.")
+def evaluate(workspace: Workspace, name, profile="auto", timeout: float = 1800):
+    if profile not in {"auto", "basic", "full", "runtime"}:
+        raise ValueError("Perfil inválido; use auto, basic, full ou runtime.")
     if timeout <= 0:
         raise ValueError("Timeout deve ser positivo.")
     destination, plan = load_plan(workspace, name)
+    if profile == "auto":
+        profile = "full" if plan["evaluator"] else "runtime"
+    if profile == "runtime":
+        summarize_runtime(destination, plan)
+        print(f"Relatório de execução → {destination / 'runtime-report/report.md'}")
+        return
+    if plan["evaluator"] is None:
+        raise ValueError("Dataset sem referências; use evaluate --profile runtime.")
     hashes = validate_predictions(destination, plan)
     repo, spec = evaluator(workspace, plan["dataset"])
     if not workspace.evaluation_python.is_file():

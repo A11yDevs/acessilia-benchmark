@@ -88,6 +88,9 @@ def diagnose(
             ).is_file(),
             "integrity": "checked by prepare, not by this presence probe",
         }
+        if spec["evaluator"] is None:
+            result["evaluators"][name] = {"ok": True, "required": False}
+            continue
         try:
             _, locked = evaluator(workspace, name)
             result["evaluators"][name] = {"ok": True, "commit": locked["commit"]}

@@ -8,21 +8,23 @@ avaliadores pertencem ao [fluxo de avaliação](../evaluation/README.md).
 ## Obter e verificar os dados
 
 Execute a partir da raiz do repositório. A instalação inicial e os downloads
-requerem internet. Os dois snapshots ocupam aproximadamente 1,8 GB, além do
+requerem internet. Os três snapshots ocupam aproximadamente 1,9 GB, além do
 espaço temporário e do cache do downloader.
 
 ```bash
 uv sync --extra datasets --group dev
 uv run acessilia-datasets list
 uv run acessilia-datasets download drdocbench-dev
+uv run acessilia-datasets download drdocbench-test
 uv run acessilia-datasets download omnidocbench
 uv run acessilia-datasets verify drdocbench-dev
+uv run acessilia-datasets verify drdocbench-test
 uv run acessilia-datasets verify omnidocbench
 ```
 
 Cada snapshot fica em `data/<identificador>/<revisão>/`. O download pode ser
 repetido após uma interrupção; arquivos já obtidos são reutilizados pelo
-Hugging Face. Somente o split `dev` do Dr.DocBench é incluído.
+Hugging Face. Os splits `dev` e `test` do Dr.DocBench ficam em snapshots separados.
 
 Ao concluir o download, a ferramenta grava `download-manifest.json` com origem,
 revisão, tamanhos e SHA-256 dos arquivos. `verify` confere os arquivos contra
@@ -69,9 +71,38 @@ O avaliador e seu commit estão fixados no catálogo. `acessilia-benchmark setup
 prepara o checkout; `evaluate` gera a configuração e executa seu ponto de entrada.
 Não é necessário montar manualmente os argumentos do avaliador.
 
-O split `test` e uma eventual trilha musical separada não fazem parte deste
-fluxo. Resultados locais no dev, por janela, não equivalem ao ranking oficial.
+Uma eventual trilha musical separada não faz parte deste fluxo. Resultados locais no dev, por janela, não equivalem ao ranking oficial.
 As condições de uso estão resumidas no [README principal](../README.md#condições-de-uso).
+
+## Dr.DocBench test
+
+Fonte e revisão iguais ao dev, identificador `drdocbench-test`.
+O inventário inclui 509 imagens de páginas em 34 documentos, mais o README
+(510 arquivos, 86.463.082 bytes). A estrutura é
+`test/<assunto>/<document_uuid>/images/page_<N>.jpg`.
+As referências são retidas pelos autores; nenhuma anotação é fabricada.
+
+A seleção usa janelas de duas páginas consecutivas e estratificação por assunto,
+como no dev, sem atravessar lacunas. Páginas isoladas sem vizinha consecutiva
+não formam casos. `--limit 0` seleciona todas as janelas elegíveis.
+`prepare` e `predict` funcionam sem referências; `smoke`, `basic` e `full`
+exigem anotações e são rejeitados para esse split. Use o perfil `runtime`:
+
+```bash
+uv run acessilia-benchmark prepare drdocbench-test --run baseline-dr-test --limit 10
+uv run acessilia-benchmark predict --run baseline-dr-test --acessilia-repo ../acessilia
+uv run acessilia-benchmark evaluate --run baseline-dr-test --profile runtime
+```
+
+`predict` gera automaticamente `runtime-report/summary.json` e `report.md`,
+inclusive quando há falhas/timeouts. O relatório registra cobertura, tempo total,
+média, p50/p95 por janela, sucesso, falhas, timeouts e páginas processadas por minuto.
+Tempos incluem startup, preparação da entrada, cache e serviços. Vazão conta
+ocorrências de páginas em janelas bem-sucedidas; pode haver sobreposição.
+Falhas entram no tempo total e nos percentis. Overall e métricas de qualidade
+ficam nulos. O perfil também aceita rodadas rotuladas com inferência real;
+previsões importadas sem evidência de tempos não produzem métricas de execução.
+Não há submissão automática ao ranking oficial.
 
 ## OmniDocBench
 

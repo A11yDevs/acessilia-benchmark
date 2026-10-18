@@ -53,11 +53,14 @@ def dataset_factory(workspace):
             write(snapshot / "OmniDocBench.json", pages)
         else:
             for number in (2, 3, 9, 10, 11, 20):
-                doc = snapshot / "dev/DOMAIN/document"
+                split = "test" if name == "drdocbench-test" else "dev"
+                doc = snapshot / split / "DOMAIN/document"
                 image = doc / f"images/page_{number}.jpg"
                 image.parent.mkdir(parents=True, exist_ok=True)
                 with Image.new("RGB", (20, 30), "white") as frame:
                     frame.save(image)
+                if name == "drdocbench-test":
+                    continue
                 write(
                     doc / f"json/document_page_{number}.json",
                     [
@@ -84,7 +87,7 @@ def dataset_factory(workspace):
             "evaluator": read(REPOSITORY / "datasets/registry.json")["datasets"][name]["evaluator"],
             "repo_id": "test/dataset",
             "revision": "fixture",
-            "split": "dev",
+            "split": "test" if name == "drdocbench-test" else "dev",
             "source": "https://example.invalid/dataset",
             "expected_files": len(files),
             "expected_bytes": sum(file["bytes"] for file in files),
@@ -99,7 +102,7 @@ def dataset_factory(workspace):
                 "dataset_id": name,
                 "repo_id": spec["repo_id"],
                 "revision": "fixture",
-                "split": "dev",
+                "split": "test" if name == "drdocbench-test" else "dev",
                 "files": files,
             },
         )
