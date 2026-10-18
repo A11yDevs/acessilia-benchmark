@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from acessilia_benchmark import cli
 from acessilia_benchmark.adapters import acessilia
 from acessilia_benchmark.io import read, write
 
@@ -53,3 +54,12 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path):
     )
     assert output.read_text() == "converted by Core"
     assert read(output.with_suffix(".metadata.json"))["mode"] == "normal"
+
+
+def test_render_tools_are_available_through_cli(workspace, monkeypatch):
+    installed = []
+    monkeypatch.setattr(cli.Workspace, "discover", lambda: workspace)
+    monkeypatch.setattr(cli, "install_render_tools", installed.append)
+    monkeypatch.setattr(sys, "argv", ["acessilia-benchmark", "setup-render-tools"])
+    cli.main()
+    assert installed == [workspace]

@@ -13,6 +13,10 @@ dependencies = []
 [project.optional-dependencies]
 datasets = ["huggingface_hub==1.33.0"]
 
+[project.scripts]
+acessilia-benchmark = "acessilia_benchmark.cli:main"
+acessilia-datasets = "acessilia_benchmark.cli:datasets_main"
+
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.11,<1", "Pillow==10.4.0", "PyMuPDF>=1.24,<2"]
 
