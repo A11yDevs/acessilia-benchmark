@@ -5,8 +5,9 @@ e OmniDocBench. O benchmark prepara os dados, seleciona amostras, executa a
 inferência e produz relatórios de qualidade e tempo de execução.
 
 O comando `run` automatiza a preparação, inferência e geração de métricas.
-O Acessilia e os serviços que ele utiliza precisam estar configurados.
-Agendamento em cluster, badges e publicação de rankings ficam para etapas futuras.
+O Acessilia e os serviços que ele utiliza precisam estar configurados; Docker
+pode isolar os ambientes Python. Agendamento em cluster, badges e publicação
+de rankings ficam para etapas futuras.
 
 ## Início rápido
 
@@ -43,6 +44,38 @@ Defina `ACESSILIA_REPO` e, opcionalmente, `ACESSILIA_PYTHON` no ambiente para
 omitir esses caminhos. Os comandos individuais `prepare`, `predict` e `evaluate`
 continuam disponíveis. No Dr.DocBench, cada caso contém duas páginas; no
 OmniDocBench, uma. `--limit` conta casos, não páginas únicas.
+
+### Docker
+
+Com Docker Engine e Compose disponíveis, o mesmo fluxo roda em ambiente isolado:
+
+```bash
+docker compose run --build --rm benchmark drdocbench-dev
+```
+
+Por padrão, o Core fica em `../acessilia`; para outro local, defina
+`ACESSILIA_REPO`. O checkout precisa incluir `.git` e um `uv.lock` atual
+(gerado com `uv lock` no Core). O container usa esse lock, copia o código para
+um diretório temporário e instala as dependências sem alterar o checkout nem
+usar o `.venv` do host. O perfil completo com ferramentas locais usa Linux x86_64.
+
+A configuração de modelos e credenciais é a do próprio Core, incluindo seu
+`.env`; não é necessário outro arquivo de configuração para o benchmark.
+Toolbox e provedores precisam estar disponíveis. A URL padrão da Toolbox no
+Compose é `http://host.docker.internal:8002`; para outra URL, defina
+`TOOLBOX_BASE_URL` no ambiente ao chamar o Compose. Os demais serviços
+configurados no Core também precisam de endereços acessíveis pelo container.
+
+Datasets e resultados permanecem em `data/` e `runs/` no host. Use
+`BENCHMARK_DATA_DIR` e `BENCHMARK_RUNS_DIR` para mudar esses locais. Avaliadores
+e seu ambiente ficam em volumes Docker; remover o container preserva esses
+dados. `--build` incorpora alterações do código. Para reprodução estrita,
+preserve também a imagem construída e as versões dos serviços externos.
+
+Dados, resultados, caches, credenciais, locks gerados e configurações locais não
+são versionados nem enviados ao contexto de construção da imagem. Os planos
+registram caminhos absolutos apenas nos resultados locais; execute as etapas
+de uma rodada no mesmo ambiente.
 
 Para conferir a infraestrutura sem chamar o Acessilia:
 

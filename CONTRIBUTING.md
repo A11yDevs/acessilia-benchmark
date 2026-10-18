@@ -69,8 +69,7 @@ fixa URLs e checksums das ferramentas de renderização; ele é diferente dos
 locks Python gerados localmente.
 
 Mantenha `uv.lock`, `poetry.lock`, `.python-version`, dados baixados, avaliadores
-obtidos, rodadas, logs, ambientes e credenciais fora do Git. Exemplos
-`.env.example` podem ser compartilhados sem valores secretos.
+obtidos, rodadas, logs, ambientes, credenciais e configurações locais fora do Git.
 
 Use Conventional Commits em inglês e separe mudanças por assunto, mantendo os
 testes junto da funcionalidade correspondente. Por exemplo:

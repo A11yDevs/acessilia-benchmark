@@ -1,0 +1,19 @@
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    init: true
+    environment:
+      TOOLBOX_BASE_URL: ${TOOLBOX_BASE_URL:-http://host.docker.internal:8002}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ${ACESSILIA_REPO:-../acessilia}:/core:ro
+      - ${BENCHMARK_DATA_DIR:-./data}:/benchmark/data
+      - ${BENCHMARK_RUNS_DIR:-./runs}:/benchmark/runs
+      - evaluator-repos:/benchmark/vendor
+      - evaluator-runtime:/benchmark/evaluation
+volumes:
+  evaluator-repos:
+  evaluator-runtime:

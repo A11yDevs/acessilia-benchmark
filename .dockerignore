@@ -1,0 +1,23 @@
+# Only source and portable dependency specifications belong in the image.
+**
+!docker/
+docker/**
+!docker/Dockerfile
+!docker/entrypoint.sh
+!pyproject.toml
+!README.md
+!src/
+!src/**
+!datasets/
+datasets/**
+!datasets/registry.json
+!evaluation/
+evaluation/**
+!evaluation/pyproject.toml
+!evaluation/render-tools.lock.json
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.env*
+**/.venv/
+**/.cache/
