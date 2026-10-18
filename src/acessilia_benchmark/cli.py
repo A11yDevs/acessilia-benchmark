@@ -1,4 +1,4 @@
-"""Command-line entrypoints for manual benchmark runs."""
+"""Command-line entrypoints for reproducible benchmark runs."""
 
 import argparse
 import json
@@ -13,6 +13,7 @@ from .io import write
 from .services.doctor import diagnose
 from .services.evaluation import evaluate
 from .services.inference import predict
+from .services.pipeline import run_dataset
 from .services.render_tools import install as install_render_tools
 from .services.runtime import setup
 from .services.selfcheck import smoke
@@ -22,6 +23,26 @@ def main():
     workspace = Workspace.discover()
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
+    sub = commands.add_parser("run", help="Baixar, preparar, executar e gerar métricas.")
+    sub.add_argument("dataset", choices=load_registry(workspace))
+    sub.add_argument("--run", help="Nome opcional; por padrão gera um identificador único.")
+    sub.add_argument(
+        "--acessilia-repo",
+        type=Path,
+        default=os.environ.get("ACESSILIA_REPO"),
+        help="Checkout do Core; também aceita ACESSILIA_REPO.",
+    )
+    sub.add_argument("--python", type=Path, default=os.environ.get("ACESSILIA_PYTHON"))
+    sub.add_argument("--data-dir", type=Path, default=workspace.data)
+    sub.add_argument("--limit", type=int, default=0, help="Casos; padrão: todo o dataset (0).")
+    sub.add_argument("--seed", type=int, default=42)
+    sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
+    sub.add_argument("--timeout", type=float, default=1800, help="Segundos por caso.")
+    sub.add_argument("--evaluation-timeout", type=float, default=1800)
+    sub.add_argument("--skip-setup", action="store_true", help="Reutilizar ambientes preparados.")
+    sub.add_argument(
+        "--offline", action="store_true", help="Não baixar dados nem preparar ambientes."
+    )
     commands.add_parser("setup")
     commands.add_parser("setup-render-tools", help="Instalar ferramentas locais de renderização.")
     for action in ("prepare", "smoke"):
@@ -31,7 +52,7 @@ def main():
         sub.add_argument("--data-dir", type=Path, default=workspace.root / "data")
         if action == "prepare":
             sub.add_argument(
-                "--limit", type=int, default=10, help="Número de casos; 0 seleciona todos."
+                "--limit", type=int, default=0, help="Número de casos; padrão: todo o dataset (0)."
             )
             sub.add_argument("--seed", type=int, default=42)
     sub = commands.add_parser("predict")
@@ -60,7 +81,25 @@ def main():
     sub.add_argument("--label", required=True)
     args = parser.parse_args()
     try:
-        if args.action == "doctor":
+        if args.action == "run":
+            if args.acessilia_repo is None:
+                raise ValueError("Informe --acessilia-repo ou defina ACESSILIA_REPO.")
+            run_dataset(
+                workspace,
+                args.dataset,
+                args.acessilia_repo,
+                name=args.run,
+                python=args.python,
+                data_dir=args.data_dir,
+                limit=args.limit,
+                seed=args.seed,
+                profile=args.profile,
+                timeout=args.timeout,
+                evaluation_timeout=args.evaluation_timeout,
+                skip_setup=args.skip_setup,
+                offline=args.offline,
+            )
+        elif args.action == "doctor":
             result = diagnose(workspace, args.acessilia_repo, args.python, args.toolbox_url)
             if args.output:
                 write(args.output, result)

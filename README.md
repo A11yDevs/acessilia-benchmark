@@ -4,38 +4,45 @@ Ferramentas para avaliar a conversão de documentos do Acessilia com Dr.DocBench
 e OmniDocBench. O benchmark prepara os dados, seleciona amostras, executa a
 inferência e produz relatórios de qualidade e tempo de execução.
 
-O fluxo é manual. O Acessilia e os serviços que ele utiliza precisam estar
-instalados e configurados separadamente. Agendamento em cluster, badges e
-publicação de rankings ficam para etapas futuras.
+O comando `run` automatiza a preparação, inferência e geração de métricas.
+O Acessilia e os serviços que ele utiliza precisam estar configurados.
+Agendamento em cluster, badges e publicação de rankings ficam para etapas futuras.
 
 ## Início rápido
 
 Execute a partir da raiz do repositório, com Linux, Git,
 [uv](https://docs.astral.sh/uv/getting-started/installation/) e Python 3.11–3.13.
-A instalação inicial requer internet. Reserve aproximadamente 1,8 GB para os dois
-datasets, além de espaço para caches, ambientes, avaliadores e resultados.
+A instalação inicial requer internet. Reserve aproximadamente 1,9 GB para os três
+snapshots, além de espaço para caches, ambientes, avaliadores e resultados.
 
-O exemplo abaixo prepara o Dr.DocBench dev e avalia dez casos:
+Com um checkout do Core e seus serviços configurados, execute:
 
 ```bash
-uv sync --extra datasets --group dev
-uv run acessilia-datasets download drdocbench-dev
-uv run acessilia-datasets verify drdocbench-dev
-uv run acessilia-benchmark setup
-uv run acessilia-benchmark doctor --acessilia-repo ../acessilia
-uv run acessilia-benchmark prepare drdocbench-dev --run baseline-dr --limit 10
-uv run acessilia-benchmark predict --run baseline-dr --acessilia-repo ../acessilia
-uv run acessilia-benchmark evaluate --run baseline-dr
+uv run --extra datasets acessilia-benchmark run drdocbench-dev --acessilia-repo ../acessilia
 ```
 
-O relatório fica em `runs/baseline-dr/basic/report.md`. O perfil padrão `basic`
-calcula métricas por componente, sem CDM ou Overall. O perfil `full` acrescenta
-CDM e permite calcular Overall local quando as métricas necessárias estão
-presentes; exige ferramentas de renderização adicionais.
+O comando baixa os dados ausentes, verifica a integridade, prepara os avaliadores,
+executa todo o dataset e gera os relatórios. O perfil automático usa `full` com
+CDM e Overall quando aplicáveis; sem referências, usa `runtime`. Se faltarem
+ferramentas de CDM, a preparação falha sem reduzir o perfil silenciosamente.
+Os requisitos de renderização estão no [guia de avaliação](evaluation/README.md).
 
-Cada caso do Dr.DocBench contém uma janela de duas páginas; no OmniDocBench,
-cada caso contém uma página. Portanto, `--limit 10` limita casos, não páginas
-únicas. Use um nome de rodada diferente para repetir a inferência.
+A rodada recebe um nome único e mostra o caminho do relatório ao terminar:
+`runs/NOME/full/report.md` ou `runs/NOME/runtime-report/report.md`.
+
+| Opção | Quando usar |
+| --- | --- |
+| `--limit 10` | Executar uma amostra menor; o padrão é todo o dataset |
+| `--run NOME` | Escolher o nome da rodada; resultados existentes são preservados |
+| `--python CAMINHO` | Escolher o interpretador do Core em vez de detectar .venv/Poetry |
+| `--data-dir CAMINHO` | Armazenar snapshots em outro diretório |
+| `--skip-setup` | Reutilizar ambientes e renderizadores já preparados |
+| `--offline --skip-setup` | Não baixar dados nem preparar ambientes; inferência ainda pode usar rede |
+
+Defina `ACESSILIA_REPO` e, opcionalmente, `ACESSILIA_PYTHON` no ambiente para
+omitir esses caminhos. Os comandos individuais `prepare`, `predict` e `evaluate`
+continuam disponíveis. No Dr.DocBench, cada caso contém duas páginas; no
+OmniDocBench, uma. `--limit` conta casos, não páginas únicas.
 
 Para conferir a infraestrutura sem chamar o Acessilia:
 
@@ -52,6 +59,7 @@ perfis, importação de previsões, artefatos e interpretação dos resultados.
 | Identificador | Conteúdo | Revisão fixada |
 | --- | --- | --- |
 | `drdocbench-dev` | 986 páginas em 66 documentos do split dev do Dr.DocBench | `7a2bc3882dff68e883fb55d10d4df22865ce2b07` |
+| `drdocbench-test` | 509 páginas em 34 documentos; referências retidas; métricas de execução | `7a2bc3882dff68e883fb55d10d4df22865ce2b07` |
 | `omnidocbench` | 1.651 imagens de páginas e anotações estruturadas | `aa1ee96d106dbe53d0ae59474d75c6e6d9b53fec` |
 
 O [catálogo](datasets/registry.json) reúne revisões, fontes, inventários e commits

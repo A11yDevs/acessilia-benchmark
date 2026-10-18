@@ -5,6 +5,10 @@ partir da raiz do repositório. A instalação do pacote e a obtenção dos dado
 estão no [README principal](../README.md#início-rápido) e no
 [guia de datasets](../datasets/README.md).
 
+Por padrão, `prepare` seleciona todos os casos e `evaluate` usa o perfil
+automático: `full` com CDM/Overall quando aplicáveis e `runtime` sem referências.
+Use `--limit N` para uma amostra menor; `smoke` mantém sua amostra diagnóstica.
+
 ## 1. Preparar os ambientes
 
 ### Avaliadores
@@ -146,7 +150,7 @@ da rodada não basta para avaliá-los.
 
 | Perfil | Métricas | Overall local | Requisitos adicionais |
 | --- | --- | --- | --- |
-| `basic` (padrão) | Distância de edição de texto, fórmulas, tabelas e ordem; TEDS de tabelas | Não calcula | Ambiente Python dos avaliadores |
+| `basic` (opcional) | Distância de edição de texto, fórmulas, tabelas e ordem; TEDS de tabelas | Não calcula | Ambiente Python dos avaliadores |
 | `full` | Métricas de `basic` e CDM de fórmulas | Calcula quando há componentes válidos | Ferramentas de renderização |
 
 `evaluate --timeout 1800` limita a execução do avaliador em segundos. Antes de
@@ -265,7 +269,16 @@ Os [testes de desenvolvimento](../CONTRIBUTING.md#testes) distinguem testes
 unitários, integrações com avaliadores e inferência real. Dados, previsões,
 checkouts dos avaliadores e rodadas ficam locais e ignorados pelo Git.
 Autoverificação e CI não comprovam disponibilidade de provedores, execução em
-H100 ou qualidade do Acessilia.
+produção ou qualidade do Acessilia.
 
 - [Dr.DocBench](https://github.com/2077AI/DrDocBench): avaliador e protocolo multipágina.
 - [OmniDocBench](https://github.com/opendatalab/OmniDocBench): avaliador, protocolo e ferramentas de renderização.
+
+## Execução sem referências
+
+O split `drdocbench-test` usa `prepare` e `predict` normalmente. O relatório
+`runtime-report/` é gerado pelo `predict`, inclusive para rodadas com falhas.
+Para regenerá-lo, execute `evaluate --run <rodada> --profile runtime`.
+Este perfil usa as medições seladas de inferência, dispensa o setup dos avaliadores
+e não calcula qualidade ou Overall. Consulte o [guia do split test](../datasets/README.md#drdocbench-test)
+para comandos, contagens e limites das métricas.
