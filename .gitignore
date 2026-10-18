@@ -1,0 +1,47 @@
+# Python environments, bytecode and build artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+
+# Test, lint and coverage outputs
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Local credentials and configuration; examples can be shared
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+/.aws/
+
+# Editor and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Downloaded corpora, evaluator checkouts and generated benchmark evidence
+# Root anchors preserve source packages and test fixtures with similar names.
+/data/
+/vendor/
+/runs/
+/predictions/
+/results/
+*.log
+
+# Dependency resolution and local Python selection
+uv.lock
+poetry.lock
+.python-version

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "datasets": {
+    "drdocbench-dev": {
+      "repo_id": "2077AIDataFoundation/DrDocBench",
+      "revision": "7a2bc3882dff68e883fb55d10d4df22865ce2b07",
+      "split": "dev",
+      "source": "https://huggingface.co/datasets/2077AIDataFoundation/DrDocBench",
+      "evaluator": {
+        "url": "https://github.com/2077AI/DrDocBench.git",
+        "directory": "DrDocBench",
+        "commit": "87b06ea3676e52366a08066cb104b56da83ec1c6",
+        "entrypoint": "tools/multipage_pdf_validation.py"
+      },
+      "allow_patterns": [
+        "README.md",
+        "dev/**"
+      ],
+      "expected_files": 4466,
+      "expected_bytes": 219950643,
+      "usage": "Anotações CC0-1.0; documentos originais sujeitos aos direitos e condições dos titulares. Uso pretendido: pesquisa e avaliação."
+    },
+    "omnidocbench": {
+      "repo_id": "opendatalab/OmniDocBench",
+      "revision": "aa1ee96d106dbe53d0ae59474d75c6e6d9b53fec",
+      "split": "benchmark",
+      "source": "https://huggingface.co/datasets/opendatalab/OmniDocBench",
+      "evaluator": {
+        "url": "https://github.com/opendatalab/OmniDocBench.git",
+        "directory": "OmniDocBench",
+        "commit": "f133a71e9e91c3621c7ce8994200a7b394a06eb3",
+        "entrypoint": "pdf_validation.py"
+      },
+      "allow_patterns": [
+        "README.md",
+        "OmniDocBench.json",
+        "images/**"
+      ],
+      "expected_files": 1653,
+      "expected_bytes": 1488543603,
+      "usage": "Dataset apenas para pesquisa; uso comercial excluído pelo aviso oficial. Apache-2.0 do código não se estende automaticamente aos documentos."
+    }
+  }
+}
