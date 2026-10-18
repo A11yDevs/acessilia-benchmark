@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "platform": "Ubuntu 24.04 x86_64",
+  "artifacts": [
+    {
+      "path": "imagemagick/ImageMagick-7.1.2-34.AppImage",
+      "url": "https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-34/ImageMagick-7.1.2-34-gcc-x86_64.AppImage",
+      "kind": "appimage",
+      "sha256": "6e9edfd35d5f30b57c27533afe003d6085faaf8607b207426f398d11751acf93"
+    },
+    {
+      "path": "fonts/SourceHanSansSC-Regular.otf",
+      "url": "https://raw.githubusercontent.com/adobe-fonts/source-han-sans/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf",
+      "kind": "font",
+      "sha256": "f1d8611151880c6c336aabeac4640ef434fa13cbfbf1ffe82d0a71b2a5637256"
+    },
+    {
+      "path": "match-at-0.1.0.tgz",
+      "url": "https://registry.npmjs.org/match-at/-/match-at-0.1.0.tgz",
+      "kind": "node",
+      "sha256": "8d2bb50d00c840687da6f7ae4c38977d4f3478ac96bc5991e29c30a73de6d059"
+    },
+    {
+      "path": "texlive/packages/latex-cjk-common_4.8.5-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/c/cjk/latex-cjk-common_4.8.5-1_amd64.deb",
+      "kind": "deb",
+      "sha256": "298a77bdc3c22b394920b33e2fbd39e04b1e443e8bb37dc76e3f06a0a2f19fd0"
+    },
+    {
+      "path": "texlive/packages/latex-cjk-chinese_4.8.5-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/c/cjk/latex-cjk-chinese_4.8.5-1_amd64.deb",
+      "kind": "deb",
+      "sha256": "0ef51bcc60155e66ab484d89ba7f1f781a797844784779b8f48b1dbc4326af1b"
+    },
+    {
+      "path": "texlive/packages/latex-cjk-chinese-arphic-gkai00mp_2.0_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/l/latex-cjk-chinese-arphic/latex-cjk-chinese-arphic-gkai00mp_2.0_all.deb",
+      "kind": "deb",
+      "sha256": "f93f7c3c8155723fb00e818a4eadc86c49eea462bf1653f479266845cfaadc1b"
+    },
+    {
+      "path": "texlive/packages/texlive-lang-cjk_2023.20240207-1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/t/texlive-lang/texlive-lang-cjk_2023.20240207-1_all.deb",
+      "kind": "deb",
+      "sha256": "9f36fc10a595360bf40691480d18a7f8a9ef3f781e50d848c1d209ee5b84dce7"
+    },
+    {
+      "path": "texlive/packages/texlive-lang-chinese_2023.20240207-1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/t/texlive-lang/texlive-lang-chinese_2023.20240207-1_all.deb",
+      "kind": "deb",
+      "sha256": "8ebcaac1d9b670668863c5834c820577fe1e94ab90988850e150b6bb51a0f49d"
+    }
+  ]
+}
