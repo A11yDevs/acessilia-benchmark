@@ -1,6 +1,8 @@
-"""Sealed regression comparisons and inference recovery contracts."""
+"""Regression, recovery and submission behavior without providers or corpora."""
 
+import json
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ from acessilia_benchmark.core.runs import import_predictions, prepare, validate_
 from acessilia_benchmark.io import digest, read, seal, write
 from acessilia_benchmark.processes import ProcessResult
 from acessilia_benchmark.services import comparison, inference
+from acessilia_benchmark.services.submission import submit
 
 
 def imported(workspace, name, dataset="omnidocbench", limit=0, window_size=1):
@@ -97,6 +100,31 @@ def test_comparison_cli_returns_failure_for_regression(workspace, dataset_factor
     with pytest.raises(SystemExit) as result:
         cli.main()
     assert result.value.code == 1
+
+
+def test_single_page_submission_includes_isolated_pages_and_exact_format(
+    workspace, dataset_factory
+):
+    dataset_factory("drdocbench-test")
+    destination, plan = imported(workspace, "test", "drdocbench-test")
+    assert len(plan["cases"]) == 6  # Includes pages 11 and 20 without a following page.
+    archive = submit(workspace, "test")
+    with zipfile.ZipFile(archive) as stream:
+        assert stream.namelist() == ["predictions.jsonl"]
+        rows = [json.loads(line) for line in stream.read("predictions.jsonl").splitlines()]
+    assert [row["page"] for row in rows] == [2, 3, 9, 10, 11, 20]
+    assert set(rows[0]) == {"subject", "document_id", "page", "markdown"}
+    assert rows[0]["subject"] == "DOMAIN"
+    assert read(destination / "submission/manifest.json")["uploaded"] is False
+
+
+@pytest.mark.parametrize("kwargs", [{"limit": 1}, {"window_size": 2}])
+def test_submission_rejects_samples_and_multipage_windows(workspace, dataset_factory, kwargs):
+    dataset_factory("drdocbench-test")
+    destination, _ = imported(workspace, "test", "drdocbench-test", **kwargs)
+    with pytest.raises(ValueError):
+        submit(workspace, "test")
+    assert not (destination / "submission").exists()
 
 
 @pytest.fixture

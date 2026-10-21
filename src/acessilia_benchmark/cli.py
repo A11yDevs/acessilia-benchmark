@@ -18,6 +18,7 @@ from .services.pipeline import run_dataset
 from .services.render_tools import install as install_render_tools
 from .services.runtime import setup
 from .services.selfcheck import smoke
+from .services.submission import submit
 
 
 def main():
@@ -72,6 +73,8 @@ def main():
     sub.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
     sub.add_argument("--provider")
     sub.add_argument("--resume", action="store_true", help="Retomar falhas/casos pendentes.")
+    sub = commands.add_parser("submit", help="Gerar zip Dr.DocBench test completo; sem envio.")
+    sub.add_argument("--run", required=True)
     sub = commands.add_parser("compare", help="Comparar rodadas avaliadas na mesma amostra.")
     sub.add_argument("base")
     sub.add_argument("candidate")
@@ -117,6 +120,8 @@ def main():
                 engine=args.engine,
                 provider=args.provider,
             )
+        elif args.action == "submit":
+            submit(workspace, args.run)
         elif args.action == "compare":
             result = compare(
                 workspace, args.base, args.candidate, args.profile, args.tolerance, args.output
