@@ -6,7 +6,8 @@ inferência e produz relatórios de qualidade e tempo de execução.
 
 O comando `run` automatiza a preparação, inferência e geração de métricas.
 O Acessilia e os serviços que ele utiliza precisam estar configurados; Docker
-pode isolar os ambientes Python. Agendamento em cluster, badges e publicação
+pode isolar os ambientes Python. Também há comparação de rodadas, retomada de
+inferência, geração de submissões Dr.DocBench e um job Slurm. Badges e publicação
 de rankings ficam para etapas futuras.
 
 ## Início rápido
@@ -34,6 +35,8 @@ A rodada recebe um nome único e mostra o caminho do relatório ao terminar:
 | Opção | Quando usar |
 | --- | --- |
 | `--limit 10` | Executar uma amostra menor; o padrão é todo o dataset |
+| `--window-size 1` | Dr.DocBench por página; o padrão histórico é uma janela de duas páginas |
+| `--engine structure --provider docling` | Medir extração de um provider pela Toolbox; requer casos de uma página |
 | `--run NOME` | Escolher o nome da rodada; resultados existentes são preservados |
 | `--python CAMINHO` | Escolher o interpretador do Core em vez de detectar .venv/Poetry |
 | `--data-dir CAMINHO` | Armazenar snapshots em outro diretório |
@@ -42,8 +45,28 @@ A rodada recebe um nome único e mostra o caminho do relatório ao terminar:
 
 Defina `ACESSILIA_REPO` e, opcionalmente, `ACESSILIA_PYTHON` no ambiente para
 omitir esses caminhos. Os comandos individuais `prepare`, `predict` e `evaluate`
-continuam disponíveis. No Dr.DocBench, cada caso contém duas páginas; no
-OmniDocBench, uma. `--limit` conta casos, não páginas únicas.
+continuam disponíveis. Por padrão, cada caso contém duas páginas no Dr.DocBench
+e uma no OmniDocBench. Use `--window-size 1` para casos Dr.DocBench de uma página.
+`--limit` conta casos, não páginas únicas.
+
+### Baselines e regressões
+
+O engine padrão `pipeline` mede o fluxo completo do Acessilia. O engine
+`structure` reutiliza o novo harness do Core para medir providers como Docling
+e MinerU com o mesmo protocolo de avaliação deste repositório.
+
+```bash
+uv run --extra datasets acessilia-benchmark run drdocbench-dev \
+  --run docling-dev --acessilia-repo ../acessilia \
+  --engine structure --provider docling --window-size 1 --limit 30
+uv run acessilia-benchmark compare baseline candidate --profile full --fail-on-regression
+```
+
+`baseline` e `candidate` são rodadas já avaliadas com a mesma amostra. A
+comparação verifica integridade e protocolo, mostra deltas e recusa cobertura
+incompatível. Para retomar falhas, use `predict --resume` com o mesmo engine e
+provider. Veja o [guia de fluxos](docs/workflows.md) para exemplos completos,
+submissão Dr.DocBench test, limites das métricas e execução Slurm.
 
 ### Docker
 
@@ -131,5 +154,6 @@ O pacote instalável fica em `src/acessilia_benchmark/` e fornece as CLIs
 
 - [Contribuição](CONTRIBUTING.md): ambiente, testes e convenções.
 - [Arquitetura](docs/architecture.md): responsabilidades, dependências e ambientes.
+- [Fluxos](docs/workflows.md): providers, regressões, retomada, submissão e Slurm.
 - [Datasets](datasets/README.md): obtenção, integridade e estrutura dos arquivos.
 - [Avaliação](evaluation/README.md): execução, métricas e leitura dos relatórios.

@@ -29,6 +29,8 @@ src/acessilia_benchmark/
 | `services.doctor` | Diagnóstico dos ambientes e da API Toolbox |
 | `services.inference` / `adapters.acessilia` | Execução isolada e integração com o Core |
 | `services.evaluation` / `reporting` | Avaliação, validação de artefatos e relatórios |
+| `services.comparison` | Deltas de métricas e custo entre rodadas com amostras e protocolos iguais |
+| `services.submission` | Pacote Dr.DocBench test completo com uma previsão por página |
 | `services.selfcheck` | Autoverificação com referências conhecidas |
 | `io` / `processes` | Persistência e execução de processos compartilhadas |
 
@@ -36,6 +38,12 @@ src/acessilia_benchmark/
 regras com os ambientes externos. `adapters/` concentra os imports específicos
 do Acessilia e executa em outro processo, usando o Python do Core. O diretório
 `core/` do benchmark contém regras locais; ele não é o repositório Acessilia.
+
+O adaptador usa `docstruct.export.markdown.document_to_markdown`, compartilhado
+com o novo harness do Core. O engine padrão chama `backend.service.process`;
+o engine `structure` chama `scripts.bench.toolbox.extract_structure` e
+`scripts.bench.core.payload_to_canonical`, sem executar o pipeline completo.
+Não há dependência dos scripts aposentados na tag `drbench-2026-snapshot`.
 
 O contexto de arquivos é recebido como uma `Workspace` explícita. A CLI usa
 `ACESSILIA_BENCHMARK_WORKSPACE` quando definido; caso contrário, procura o catálogo
@@ -56,6 +64,17 @@ verifica o caminho até o avaliador sem executar o Acessilia.
 Os nomes de rodada identificam diretórios em `runs/`. Planos e previsões
 existentes são preservados. Uma mesma rodada pode ser avaliada em `basic` e
 `full`, cada qual em seu diretório; repetir o mesmo perfil exige outra rodada.
+
+`predict --resume` confere sistema e saídas bem-sucedidas antes de repetir
+falhas/casos pendentes. Checkpoints por caso são selados; logs e tentativas
+anteriores são preservados. Tempos acumulam todas as chamadas. Um lock impede
+duas inferências simultâneas sobre a mesma rodada. Resultados de qualidade são
+selados com hashes dos artefatos para comparação posterior.
+
+O tamanho da janela Dr.DocBench é explícito no plano (uma ou duas páginas).
+Submissões exigem uma página e cobertura completa do split test. Comparações
+recusam amostras ou agrupamentos diferentes e permanecem resultados locais.
+Veja os [fluxos de trabalho](workflows.md).
 
 ## Ambientes e reprodução
 
