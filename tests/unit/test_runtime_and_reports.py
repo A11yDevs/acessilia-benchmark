@@ -59,7 +59,10 @@ def test_timeout_stops_descendant_process(tmp_path):
     pid = int(pid_file.read_text())
     status = Path(f"/proc/{pid}/stat")
     for _ in range(20):
-        if not status.exists() or status.read_text().split()[2] == "Z":
+        try:
+            if status.read_text().split()[2] == "Z":
+                break
+        except (FileNotFoundError, ProcessLookupError):
             break
         time.sleep(0.02)
     else:
