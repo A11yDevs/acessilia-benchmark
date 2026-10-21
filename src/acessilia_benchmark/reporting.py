@@ -227,6 +227,9 @@ def summarize_runtime(destination, plan):
         "quality_metrics": None,
         "quality_reason": "Perfil de execução sem avaliação de referências.",
         "status": evidence["status"],
+        "system": read(destination / "system.json")
+        if (destination / "system.json").is_file()
+        else None,
         "plan_sha256": digest(destination / "plan.json"),
         "inference_sha256": digest(evidence_path),
         "coverage": {
@@ -236,6 +239,10 @@ def summarize_runtime(destination, plan):
             "unique_pages": plan["unique_pages"],
         },
         "runtime": {
+            "inference_calls": sum(row.get("attempts", 1) for row in rows),
+            "failed_calls": sum(
+                row.get("failed_attempts", int(row["status"] != "ok")) for row in rows
+            ),
             "successful_cases": len(successful),
             "failures": len(rows) - len(successful),
             "timeouts": sum(row["status"] == "timeout" for row in rows),
@@ -256,7 +263,8 @@ def summarize_runtime(destination, plan):
         f"Dataset: {plan['dataset']} @ {plan['dataset_revision']}\n\n"
         "Sem métricas de qualidade ou Overall neste perfil.\n\n"
         "Tempos incluem startup do processo, preparação da entrada, cache e serviços; "
-        "não medem apenas o modelo nem GPU-hora. Percentis incluem falhas e timeouts. "
+        "não medem apenas o modelo nem GPU-hora. Tempos e percentis acumulam todas "
+        "as tentativas por caso, incluindo falhas, timeouts e retomadas. "
         "Páginas na vazão contam ocorrências nas janelas; janelas vizinhas podem "
         "compartilhar páginas. Falhas consomem tempo, mas não contam na vazão de sucesso.\n\n"
         + "```json\n"

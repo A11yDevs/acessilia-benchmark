@@ -70,6 +70,7 @@ def main():
     sub.add_argument("--timeout", type=float, default=1800)
     sub.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
     sub.add_argument("--provider")
+    sub.add_argument("--resume", action="store_true", help="Retomar falhas/casos pendentes.")
     sub = commands.add_parser("evaluate")
     sub.add_argument("--run", required=True)
     sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
@@ -154,6 +155,7 @@ def main():
                 args.timeout,
                 engine=args.engine,
                 provider=args.provider,
+                resume=args.resume,
             )
         elif args.action == "evaluate":
             evaluate(workspace, args.run, args.profile, timeout=args.timeout)
