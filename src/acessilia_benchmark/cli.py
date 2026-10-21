@@ -10,6 +10,7 @@ from .core.catalog import download, load_registry, verify
 from .core.runs import import_predictions, prepare
 from .core.workspace import Workspace
 from .io import write
+from .services.comparison import compare
 from .services.doctor import diagnose
 from .services.evaluation import evaluate
 from .services.inference import predict
@@ -71,6 +72,13 @@ def main():
     sub.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
     sub.add_argument("--provider")
     sub.add_argument("--resume", action="store_true", help="Retomar falhas/casos pendentes.")
+    sub = commands.add_parser("compare", help="Comparar rodadas avaliadas na mesma amostra.")
+    sub.add_argument("base")
+    sub.add_argument("candidate")
+    sub.add_argument("--profile", choices=["basic", "full", "runtime"], default="full")
+    sub.add_argument("--tolerance", type=float, default=0, help="Tolerância em pontos de 0–100.")
+    sub.add_argument("--output", type=Path)
+    sub.add_argument("--fail-on-regression", action="store_true")
     sub = commands.add_parser("evaluate")
     sub.add_argument("--run", required=True)
     sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
@@ -109,6 +117,13 @@ def main():
                 engine=args.engine,
                 provider=args.provider,
             )
+        elif args.action == "compare":
+            result = compare(
+                workspace, args.base, args.candidate, args.profile, args.tolerance, args.output
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            if args.fail_on_regression and result["quality_regressions"]:
+                parser.exit(1)
         elif args.action == "doctor":
             result = diagnose(workspace, args.acessilia_repo, args.python, args.toolbox_url)
             if args.output:

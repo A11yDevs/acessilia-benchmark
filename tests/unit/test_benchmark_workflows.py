@@ -1,14 +1,102 @@
-"""Sealed inference recovery and provider baseline contracts."""
+"""Sealed regression comparisons and inference recovery contracts."""
 
 import sys
 from pathlib import Path
 
 import pytest
 
-from acessilia_benchmark.core.runs import prepare, validate_predictions
-from acessilia_benchmark.io import read, write
+from acessilia_benchmark.core.runs import import_predictions, prepare, validate_predictions
+from acessilia_benchmark.io import digest, read, seal, write
 from acessilia_benchmark.processes import ProcessResult
-from acessilia_benchmark.services import inference
+from acessilia_benchmark.services import comparison, inference
+
+
+def imported(workspace, name, dataset="omnidocbench", limit=0, window_size=1):
+    destination, plan = prepare(
+        workspace, dataset, name, workspace.data, limit, 42, window_size=window_size
+    )
+    source = workspace.root / f"source-{name}"
+    for case in plan["cases"]:
+        path = source / case["prediction"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"generated {case['id']}", encoding="utf-8")
+    import_predictions(workspace, name, source, name)
+    return destination, plan
+
+
+def evaluated(workspace, name, *, limit=0, distance=0.1, teds=0.9):
+    destination, plan = imported(workspace, name, limit=limit)
+    artifacts = destination / "basic"
+    write(
+        artifacts / "summary.json",
+        {
+            "profile": "basic",
+            "overall": None,
+            "overall_details": {"protocol": None},
+            "coverage": {"cases": len(plan["cases"])},
+            "metrics": {
+                "text_block": {"Edit_dist": {"ALL": distance}},
+                "table": {"TEDS": {"ALL": teds}},
+            },
+        },
+    )
+    seal(artifacts / "summary.json")
+    write(
+        artifacts / "execution.json",
+        {
+            "status": "ok",
+            "predictions_sha256": validate_predictions(destination, plan),
+            "artifacts_sha256": {"summary.json": digest(artifacts / "summary.json")},
+        },
+    )
+    seal(artifacts / "execution.json")
+    return artifacts
+
+
+def test_comparison_detects_direction_and_percentage_point_tolerance(workspace, dataset_factory):
+    dataset_factory()
+    evaluated(workspace, "base")
+    evaluated(workspace, "candidate", distance=0.05, teds=0.88)
+    result = comparison.compare(workspace, "base", "candidate", "basic")
+    assert result["quality_regressions"] == ["table/TEDS/ALL"]
+    assert result["metrics"]["text_block/Edit_dist/ALL"]["gain_points"] == pytest.approx(5)
+    assert (
+        comparison.compare(workspace, "base", "candidate", "basic", 2.01)["verdict"]
+        == "no_regression"
+    )
+
+
+@pytest.mark.parametrize("change", ["selection", "tamper", "missing_metric"])
+def test_comparison_refuses_incompatible_or_modified_results(workspace, dataset_factory, change):
+    dataset_factory()
+    evaluated(workspace, "base")
+    artifacts = evaluated(
+        workspace,
+        "candidate",
+        limit=1 if change == "selection" else 0,
+        teds=None if change == "missing_metric" else 0.9,
+    )
+    if change == "tamper":
+        (artifacts / "summary.json").write_text("{}")
+    with pytest.raises(ValueError):
+        comparison.compare(workspace, "base", "candidate", "basic")
+
+
+def test_comparison_cli_returns_failure_for_regression(workspace, dataset_factory, monkeypatch):
+    from acessilia_benchmark import cli
+
+    dataset_factory()
+    evaluated(workspace, "base")
+    evaluated(workspace, "candidate", distance=0.5)
+    monkeypatch.setattr(cli.Workspace, "discover", lambda: workspace)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["bench", "compare", "base", "candidate", "--profile", "basic", "--fail-on-regression"],
+    )
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 1
 
 
 @pytest.fixture
@@ -46,6 +134,14 @@ def test_resume_retries_only_failed_cases_and_accounts_for_all_time(workspace, p
     assert report["runtime"]["total_seconds"] == 7
     inference.predict(workspace, "recover", workspace.root, None, resume=True)
     assert len(calls) == 3
+
+
+def test_runtime_comparison_accepts_partial_runs_without_claiming_quality(workspace, partial):
+    result = comparison.compare(workspace, "recover", "recover", "runtime")
+    assert result["verdict"] == "runtime_only"
+    assert result["metrics"] == {}
+    assert result["runtime"]["base"]["failures"] == 1
+    assert result["runtime_deltas"]["total_seconds"] == 0
 
 
 @pytest.mark.parametrize("change", ["prediction", "core", "system", "metadata"])

@@ -145,6 +145,13 @@ def evaluate(workspace: Workspace, name, profile="auto", timeout: float = 1800):
         if profile == "full":
             validate_cdm(artifacts, metrics)
         summarize(destination, plan, artifacts, metrics, profile)
+        seal(artifacts / "summary.json")
+        metadata["artifacts_sha256"] = {
+            path.relative_to(artifacts).as_posix(): digest(path)
+            for path in sorted(artifacts.rglob("*.json"))
+            if path.name != "execution.json"
+        }
+        write(artifacts / "execution.json", metadata)
     except (ValueError, OSError, KeyError) as error:
         metadata.update(status="failed", error=str(error))
         write(artifacts / "execution.json", metadata)

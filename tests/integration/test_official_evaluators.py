@@ -7,6 +7,7 @@ import pytest
 
 from acessilia_benchmark.core.workspace import Workspace
 from acessilia_benchmark.io import read
+from acessilia_benchmark.services.comparison import compare
 from acessilia_benchmark.services.selfcheck import smoke
 
 
@@ -27,6 +28,7 @@ def test_official_evaluator_with_real_dataset(dataset):
         summary["metrics"][component]
         for component in ("text_block", "table", "display_formula", "reading_order")
     )
+    assert compare(workspace, name, name, "basic")["verdict"] == "no_regression"
 
 
 @pytest.mark.integration
@@ -74,6 +76,7 @@ def test_full_metrics_and_overall_against_official_artifacts(dataset, request):
         expected = mean(mean(scores) for scores in components.values())
         assert summary["overall"] == pytest.approx(expected)
     assert "Overall local" in (artifacts / "report.md").read_text()
+    assert compare(workspace, name, name, "full")["verdict"] == "no_regression"
     print(json.dumps({"run": name, "overall": summary["overall"], "expected": expected}))
 
 
@@ -87,3 +90,4 @@ def test_single_page_dr_protocol_with_official_evaluator():
     assert all(len(case["images"]) == 1 for case in plan["cases"])
     summary = read(workspace.run_dir(name) / "basic/summary.json")
     assert summary["coverage"]["scored_cases"] == len(plan["cases"])
+    assert compare(workspace, name, name, "basic")["verdict"] == "no_regression"
