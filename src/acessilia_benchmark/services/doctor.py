@@ -11,14 +11,22 @@ from ..core.catalog import load_registry
 from ..core.workspace import Workspace
 from .runtime import evaluator
 
-CORE_MODULES = ("agno", "fitz", "PIL", "fastapi", "docstruct")
+CORE_MODULES = ("agno", "fitz", "PIL", "fastapi", "docstruct", "acessilia_sdk")
 
 
 def interpreter_info(python: Path, repo: Path) -> dict:
-    program = """import importlib.util,json,sys
+    program = """import importlib,importlib.util,json,sys
 sys.path[:0] = [sys.argv[1], sys.argv[1] + '/libs/docstruct/src']
-names = ('agno', 'fitz', 'PIL', 'fastapi', 'docstruct')
-print(json.dumps({'python': sys.version, 'prefix': sys.prefix,
+names = ('agno', 'fitz', 'PIL', 'fastapi', 'docstruct', 'acessilia_sdk')
+contracts = {}
+for module, symbol in [('docstruct.export.markdown', 'document_to_markdown'),
+                       ('scripts.bench.core', 'payload_to_canonical'),
+                       ('scripts.bench.toolbox', 'extract_structure')]:
+    try:
+        contracts[module + ':' + symbol] = callable(getattr(importlib.import_module(module), symbol))
+    except Exception:
+        contracts[module + ':' + symbol] = False
+print(json.dumps({'python': sys.version, 'prefix': sys.prefix, 'contracts': contracts,
                   'modules': {name: importlib.util.find_spec(name) is not None for name in names}}))
 """
     result = subprocess.run(
@@ -48,6 +56,9 @@ def resolve_python(repo: Path, explicit: Path | None = None) -> tuple[Path, dict
         try:
             info = interpreter_info(candidate, repo)
             missing = [name for name in CORE_MODULES if not info["modules"][name]]
+            missing += [
+                name for name, available in info.get("contracts", {}).items() if not available
+            ]
             if not missing:
                 return candidate, info
             errors.append(f"{candidate}: faltam {', '.join(missing)}")

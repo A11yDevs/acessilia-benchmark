@@ -27,7 +27,10 @@ def test_virtual_environment_symlink_is_not_resolved(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "acessilia_benchmark.services.doctor.interpreter_info",
         lambda *_: {
-            "modules": {name: True for name in ("agno", "fitz", "PIL", "fastapi", "docstruct")}
+            "modules": {
+                name: True
+                for name in ("agno", "fitz", "PIL", "fastapi", "docstruct", "acessilia_sdk")
+            }
         },
     )
     selected, _ = resolve_python(tmp_path, candidate)

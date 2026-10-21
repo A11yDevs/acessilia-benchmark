@@ -34,7 +34,7 @@ def main():
     os.chdir(repo)
     from backend.config.settings import settings
     from backend.service import process
-    from scripts.drbench.markdown_converter import canonical_to_drbench_md
+    from docstruct.export.markdown import document_to_markdown
 
     if settings.pipeline_engine == "pddl" and settings.pddl_execute_dry_run:
         raise RuntimeError("Desative PDDL_EXECUTE_DRY_RUN para avaliar conversão real.")
@@ -49,7 +49,7 @@ def main():
         status = execution_metadata.get("pddl_execution_status")
         if status in {"failed", "replan-required", "dry-run-completed"}:
             raise RuntimeError(f"Pipeline sem execução válida: {status}")
-        markdown = canonical_to_drbench_md(canonical)
+        markdown = document_to_markdown(canonical)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(markdown, encoding="utf-8")
     public_fields = (

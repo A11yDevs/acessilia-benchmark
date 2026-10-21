@@ -20,8 +20,8 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path):
             "async def process(source, mode):\n"
             "    return {'text': 'converted by Core', 'metadata': {}}\n"
         ),
-        "scripts/drbench/markdown_converter.py": (
-            "def canonical_to_drbench_md(document):\n    return document['text']\n"
+        "libs/docstruct/src/docstruct/export/markdown.py": (
+            "def document_to_markdown(document):\n    return document['text']\n"
         ),
     }
     for name, content in files.items():
