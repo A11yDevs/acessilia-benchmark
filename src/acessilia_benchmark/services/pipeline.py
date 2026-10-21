@@ -29,7 +29,10 @@ def run_dataset(
     evaluation_timeout: float = 1800,
     skip_setup: bool = False,
     offline: bool = False,
+    window_size: int = 2,
 ) -> Path:
+    if window_size not in (1, 2):
+        raise ValueError("Janela deve ter uma ou duas páginas.")
     spec = load_registry(workspace)[dataset]
     if profile == "auto":
         profile = "full" if spec["evaluator"] else "runtime"
@@ -58,7 +61,7 @@ def run_dataset(
             install_render_tools(workspace)
     if profile != "runtime":
         runtime_versions(workspace, profile, dataset)
-    prepare(workspace, dataset, name, data_dir, limit, seed)
+    prepare(workspace, dataset, name, data_dir, limit, seed, window_size=window_size)
     predict(workspace, name, repo, selected, timeout)
     evaluate(workspace, name, profile, timeout=evaluation_timeout)
     report = destination / ("runtime-report" if profile == "runtime" else profile) / "report.md"

@@ -10,14 +10,16 @@ from .sampling import ordered_cases
 from .workspace import Workspace
 
 
-def prepare(workspace: Workspace, dataset, name, data_dir, limit, seed, fixture=False):
+def prepare(
+    workspace: Workspace, dataset, name, data_dir, limit, seed, fixture=False, window_size=2
+):
     destination = workspace.run_dir(name)
     if destination.exists():
         raise ValueError("Rodada já existe; escolha outro nome para preservar os resultados.")
     if fixture and load_registry(workspace)[dataset]["evaluator"] is None:
         raise ValueError("Dataset sem referências; smoke indisponível. Use prepare e predict.")
     verify(dataset, load_registry(workspace)[dataset], data_dir)
-    cases = list(ordered_cases(workspace, dataset, data_dir, seed))
+    cases = list(ordered_cases(workspace, dataset, data_dir, seed, window_size))
     if fixture:
 
         def categories(case):
@@ -59,6 +61,7 @@ def prepare(workspace: Workspace, dataset, name, data_dir, limit, seed, fixture=
         "dataset_revision": load_registry(workspace)[dataset]["revision"],
         "snapshot": str(snapshot),
         "seed": seed,
+        "window_size": 1 if dataset == "omnidocbench" else window_size,
         "limit": limit,
         "fixture": fixture,
         "cases": cases,

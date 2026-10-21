@@ -75,3 +75,15 @@ def test_full_metrics_and_overall_against_official_artifacts(dataset, request):
         assert summary["overall"] == pytest.approx(expected)
     assert "Overall local" in (artifacts / "report.md").read_text()
     print(json.dumps({"run": name, "overall": summary["overall"], "expected": expected}))
+
+
+@pytest.mark.integration
+def test_single_page_dr_protocol_with_official_evaluator():
+    workspace = Workspace(Path(__file__).resolve().parents[2])
+    name = f"integration-single-dr-{uuid.uuid4().hex[:8]}"
+    smoke(workspace, "drdocbench-dev", name, workspace.data, window_size=1)
+    plan = read(workspace.run_dir(name) / "plan.json")
+    assert plan["window_size"] == 1
+    assert all(len(case["images"]) == 1 for case in plan["cases"])
+    summary = read(workspace.run_dir(name) / "basic/summary.json")
+    assert summary["coverage"]["scored_cases"] == len(plan["cases"])

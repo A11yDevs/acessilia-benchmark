@@ -43,6 +43,7 @@ def main():
     sub.add_argument(
         "--offline", action="store_true", help="Não baixar dados nem preparar ambientes."
     )
+    sub.add_argument("--window-size", type=int, choices=[1, 2], default=2)
     commands.add_parser("setup")
     commands.add_parser("setup-render-tools", help="Instalar ferramentas locais de renderização.")
     for action in ("prepare", "smoke"):
@@ -50,6 +51,7 @@ def main():
         sub.add_argument("dataset", choices=load_registry(workspace))
         sub.add_argument("--run", required=True)
         sub.add_argument("--data-dir", type=Path, default=workspace.root / "data")
+        sub.add_argument("--window-size", type=int, choices=[1, 2], default=2)
         if action == "prepare":
             sub.add_argument(
                 "--limit", type=int, default=0, help="Número de casos; padrão: todo o dataset (0)."
@@ -98,6 +100,7 @@ def main():
                 evaluation_timeout=args.evaluation_timeout,
                 skip_setup=args.skip_setup,
                 offline=args.offline,
+                window_size=args.window_size,
             )
         elif args.action == "doctor":
             result = diagnose(workspace, args.acessilia_repo, args.python, args.toolbox_url)
@@ -118,10 +121,22 @@ def main():
             if args.limit < 0:
                 raise ValueError("--limit deve ser >= 0.")
             prepare(
-                workspace, args.dataset, args.run, args.data_dir.resolve(), args.limit, args.seed
+                workspace,
+                args.dataset,
+                args.run,
+                args.data_dir.resolve(),
+                args.limit,
+                args.seed,
+                window_size=args.window_size,
             )
         elif args.action == "smoke":
-            smoke(workspace, args.dataset, args.run, args.data_dir.resolve())
+            smoke(
+                workspace,
+                args.dataset,
+                args.run,
+                args.data_dir.resolve(),
+                window_size=args.window_size,
+            )
         elif args.action == "predict":
             if args.timeout <= 0:
                 raise ValueError("--timeout deve ser positivo.")

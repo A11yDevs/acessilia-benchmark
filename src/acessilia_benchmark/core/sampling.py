@@ -9,8 +9,10 @@ from .catalog import load_registry
 from .workspace import Workspace
 
 
-def ordered_cases(workspace: Workspace, dataset, data_dir, seed):
+def ordered_cases(workspace: Workspace, dataset, data_dir, seed, window_size=2):
     """Stable stratification by source type (Omni) or subject (Dr), no GT scores."""
+    if window_size not in (1, 2):
+        raise ValueError("Janela deve ter uma ou duas páginas.")
     spec = load_registry(workspace)[dataset]
     snapshot = data_dir / dataset / spec["revision"]
     groups = defaultdict(list)
@@ -34,23 +36,32 @@ def ordered_cases(workspace: Workspace, dataset, data_dir, seed):
             pages = sorted(
                 folder.glob("images/page_*.jpg"), key=lambda path: int(path.stem.split("_")[-1])
             )
-            for first, second in zip(pages, pages[1:], strict=False):
-                start, end = (int(first.stem.split("_")[-1]), int(second.stem.split("_")[-1]))
-                if end != start + 1:
+            windows = (
+                [(p,) for p in pages]
+                if window_size == 1
+                else list(zip(pages, pages[1:], strict=False))
+            )
+            for window in windows:
+                numbers = [int(p.stem.split("_")[-1]) for p in window]
+                start, end = numbers[0], numbers[-1]
+                if window_size == 2 and end != start + 1:
                     continue
-                refs = [folder / "json" / f"{doc}_page_{n}.json" for n in (start, end)]
+                refs = [folder / "json" / f"{doc}_page_{n}.json" for n in numbers]
                 if spec["evaluator"] is not None and not any(read(ref) for ref in refs):
                     continue
                 name = f"{doc}_page_{start}-{end}"
                 groups[subject].append(
                     {
                         "id": f"{subject}/{name}",
-                        "images": [str(first), str(second)],
+                        "images": [str(p) for p in window],
+                        "document_id": doc,
+                        "subject": subject,
+                        "page_numbers": numbers,
                         "prediction": f"{subject}/{name}.md",
                         "references": [str(ref) for ref in refs] if spec["evaluator"] else [],
                         "reference_markdown": [
                             str(folder / "mds" / f"{doc}_{n}.md")
-                            for n in (start, end)
+                            for n in numbers
                             if spec["evaluator"] is not None
                         ],
                     }

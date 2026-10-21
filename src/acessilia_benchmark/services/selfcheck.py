@@ -8,8 +8,10 @@ from ..io import local_path, read
 from .evaluation import evaluate
 
 
-def smoke(workspace: Workspace, dataset, name, data_dir):
-    destination, plan = prepare(workspace, dataset, name, data_dir, 10, 42, fixture=True)
+def smoke(workspace: Workspace, dataset, name, data_dir, window_size=2):
+    destination, plan = prepare(
+        workspace, dataset, name, data_dir, 10, 42, fixture=True, window_size=window_size
+    )
     pages = read(destination / "ground-truth.json") if dataset == "omnidocbench" else None
     for index, case in enumerate(plan["cases"]):
         if pages is None:

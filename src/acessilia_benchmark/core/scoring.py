@@ -129,7 +129,9 @@ def overall_details(metrics, dataset, profile, artifacts, cases):
             value=mean(valid) if valid else None,
             protocol="drdocbench-available-components-per-window",
             source=DR_SOURCE,
-            unit="two-page window; not the challenge single-page unit",
+            unit="single-page window"
+            if all(len(c.get("images", [])) == 1 for c in cases)
+            else "two-page window; not the challenge single-page unit",
             case_scores=scores,
             excluded_cases=[key for key, case in scores.items() if case["overall"] is None],
             reason=None if valid else "Nenhuma janela com componentes pontuados.",
