@@ -30,9 +30,15 @@ def run_dataset(
     skip_setup: bool = False,
     offline: bool = False,
     window_size: int = 2,
+    engine: str = "pipeline",
+    provider: str | None = None,
 ) -> Path:
+    if engine not in {"pipeline", "structure"} or (provider and engine != "structure"):
+        raise ValueError("Provider explícito requer --engine structure.")
     if window_size not in (1, 2):
         raise ValueError("Janela deve ter uma ou duas páginas.")
+    if engine == "structure" and dataset != "omnidocbench" and window_size != 1:
+        raise ValueError("Engine structure requer --window-size 1.")
     spec = load_registry(workspace)[dataset]
     if profile == "auto":
         profile = "full" if spec["evaluator"] else "runtime"
@@ -62,7 +68,7 @@ def run_dataset(
     if profile != "runtime":
         runtime_versions(workspace, profile, dataset)
     prepare(workspace, dataset, name, data_dir, limit, seed, window_size=window_size)
-    predict(workspace, name, repo, selected, timeout)
+    predict(workspace, name, repo, selected, timeout, engine=engine, provider=provider)
     evaluate(workspace, name, profile, timeout=evaluation_timeout)
     report = destination / ("runtime-report" if profile == "runtime" else profile) / "report.md"
     print(f"Relatório → {report}", flush=True)

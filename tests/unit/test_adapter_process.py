@@ -4,12 +4,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from acessilia_benchmark import cli
 from acessilia_benchmark.adapters import acessilia
 from acessilia_benchmark.io import read, write
 
 
-def test_adapter_executes_directly_in_isolated_interpreter(tmp_path):
+@pytest.mark.parametrize("engine", ["pipeline", "structure"])
+def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
     repo = tmp_path / "core"
     files = {
         "backend/config/settings.py": (
@@ -24,6 +27,14 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path):
             "def document_to_markdown(document):\n    return document['text']\n"
         ),
     }
+    if engine == "structure":
+        files["backend/service.py"] = "raise AssertionError('full pipeline must not be imported')"
+        files["scripts/bench/toolbox.py"] = (
+            "def extract_structure(source, provider):\n"
+            "    assert provider == 'docling'\n"
+            "    return {'text': 'converted by Core'}\n"
+        )
+        files["scripts/bench/core.py"] = "def payload_to_canonical(payload):\n    return payload\n"
     for name, content in files.items():
         target = repo / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -45,6 +56,9 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path):
             str(request),
             "--output",
             str(output),
+            "--engine",
+            engine,
+            *(["--provider", "docling"] if engine == "structure" else []),
         ],
         cwd=tmp_path,
         check=True,

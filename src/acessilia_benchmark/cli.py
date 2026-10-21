@@ -44,6 +44,8 @@ def main():
         "--offline", action="store_true", help="Não baixar dados nem preparar ambientes."
     )
     sub.add_argument("--window-size", type=int, choices=[1, 2], default=2)
+    sub.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
+    sub.add_argument("--provider", help="Provider da Toolbox; requer engine structure.")
     commands.add_parser("setup")
     commands.add_parser("setup-render-tools", help="Instalar ferramentas locais de renderização.")
     for action in ("prepare", "smoke"):
@@ -66,6 +68,8 @@ def main():
         help="Interpretador do Acessilia; detecta .venv ou Poetry por padrão.",
     )
     sub.add_argument("--timeout", type=float, default=1800)
+    sub.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
+    sub.add_argument("--provider")
     sub = commands.add_parser("evaluate")
     sub.add_argument("--run", required=True)
     sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
@@ -101,6 +105,8 @@ def main():
                 skip_setup=args.skip_setup,
                 offline=args.offline,
                 window_size=args.window_size,
+                engine=args.engine,
+                provider=args.provider,
             )
         elif args.action == "doctor":
             result = diagnose(workspace, args.acessilia_repo, args.python, args.toolbox_url)
@@ -140,7 +146,15 @@ def main():
         elif args.action == "predict":
             if args.timeout <= 0:
                 raise ValueError("--timeout deve ser positivo.")
-            predict(workspace, args.run, args.acessilia_repo, args.python, args.timeout)
+            predict(
+                workspace,
+                args.run,
+                args.acessilia_repo,
+                args.python,
+                args.timeout,
+                engine=args.engine,
+                provider=args.provider,
+            )
         elif args.action == "evaluate":
             evaluate(workspace, args.run, args.profile, timeout=args.timeout)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

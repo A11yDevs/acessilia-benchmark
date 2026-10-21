@@ -15,9 +15,20 @@ from .doctor import resolve_python
 
 
 def predict(
-    workspace: Workspace, name: str, repo: Path, python: Path | None, timeout: float = 1800
+    workspace: Workspace,
+    name: str,
+    repo: Path,
+    python: Path | None,
+    timeout: float = 1800,
+    *,
+    engine: str = "pipeline",
+    provider: str | None = None,
 ) -> None:
+    if engine not in {"pipeline", "structure"} or (provider and engine != "structure"):
+        raise ValueError("Provider explícito requer --engine structure.")
     destination, plan = load_plan(workspace, name)
+    if engine == "structure" and any(len(case["images"]) != 1 for case in plan["cases"]):
+        raise ValueError("Engine structure requer casos de uma página; prepare --window-size 1.")
     if plan["fixture"]:
         raise ValueError("Rodada de autoverificação; crie outra para o Acessilia.")
     output = destination / "predictions"
@@ -39,6 +50,8 @@ def predict(
         "input_representation": "original image; lossless raster PDF for 2-page windows",
         "cache": "isolated Core storage; external provider caches follow server configuration",
         "mode": "normal",
+        "engine": engine,
+        "provider": provider,
         "pddl_execute_dry_run": False,
         "dependency_files": {
             path.name: digest(path)
@@ -76,7 +89,11 @@ def predict(
                     str(request),
                     "--output",
                     str(target),
+                    "--engine",
+                    engine,
                 ]
+                if provider:
+                    command += ["--provider", provider]
                 result = run_logged(command, log, timeout=timeout, env=environment)
                 status = (
                     "timeout"

@@ -100,7 +100,7 @@ def test_unlabelled_auto_uses_runtime(workspace, steps, monkeypatch):
 
 
 def test_failed_inference_never_scores(workspace, steps, monkeypatch):
-    def failed(*args):
+    def failed(*args, **kwargs):
         raise ValueError("Inferência incompleta")
 
     monkeypatch.setattr(pipeline, "predict", failed)

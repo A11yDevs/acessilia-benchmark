@@ -19,7 +19,11 @@ def main():
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", default="normal", choices=["normal"])
+    parser.add_argument("--engine", choices=["pipeline", "structure"], default="pipeline")
+    parser.add_argument("--provider")
     args = parser.parse_args()
+    if args.provider and args.engine != "structure":
+        parser.error("--provider requer --engine structure.")
     args.output = args.output.expanduser().absolute()
     request = json.loads(args.request.read_text(encoding="utf-8"))
     if set(request) != {"id", "images"} or not request["images"]:
@@ -33,10 +37,13 @@ def main():
     sys.path.insert(0, str(repo / "libs/docstruct/src"))
     os.chdir(repo)
     from backend.config.settings import settings
-    from backend.service import process
     from docstruct.export.markdown import document_to_markdown
 
-    if settings.pipeline_engine == "pddl" and settings.pddl_execute_dry_run:
+    if (
+        args.engine == "pipeline"
+        and settings.pipeline_engine == "pddl"
+        and settings.pddl_execute_dry_run
+    ):
         raise RuntimeError("Desative PDDL_EXECUTE_DRY_RUN para avaliar conversão real.")
     images = [Path(path) for path in request["images"]]
     with tempfile.TemporaryDirectory(prefix="acessilia-benchmark-") as temporary:
@@ -44,7 +51,15 @@ def main():
         if len(images) > 1:
             source = Path(temporary) / "window.pdf"
             pack_images(images, source)
-        canonical = asyncio.run(process(source, mode=args.mode))
+        if args.engine == "structure":
+            from scripts.bench.core import payload_to_canonical
+            from scripts.bench.toolbox import extract_structure
+
+            canonical = payload_to_canonical(extract_structure(source, args.provider))
+        else:
+            from backend.service import process
+
+            canonical = asyncio.run(process(source, mode=args.mode))
         execution_metadata = canonical.get("metadata") or canonical.get("canonical_metadata") or {}
         status = execution_metadata.get("pddl_execution_status")
         if status in {"failed", "replan-required", "dry-run-completed"}:
@@ -75,6 +90,8 @@ def main():
         "python_version": sys.version,
         "settings": {name: getattr(settings, name, None) for name in public_fields},
         "mode": args.mode,
+        "engine": args.engine,
+        "provider": args.provider,
         "execution_status": status,
         "technical_warnings": canonical.get("technical_warnings", []),
         "prediction_sha256": hashlib.sha256(markdown.encode()).hexdigest(),
