@@ -1,5 +1,16 @@
 # Avaliação manual
 
+Os relatórios de qualidade e runtime mostram os avisos e diagnósticos de
+processamento fornecidos pelo Core por caso. `reported_warnings` indica revisão
+necessária; `unknown` e `not_available` indicam evidência insuficiente (por
+exemplo, metadados antigos ou previsões importadas). Um aviso não é
+automaticamente uma falha, e `no_reported_warnings` não garante execução sem
+degradação: o Core pode não propagar falhas de enriquecimento matemático.
+As métricas continuam medindo o Markdown produzido, inclusive quando há avisos.
+Na comparação, `processing_review` sinaliza essa necessidade independentemente
+do veredito sobre regressão das métricas; relatórios antigos não são presumidos
+íntegros. A correção da origem das falhas silenciosas ainda depende do Core.
+
 O fluxo de avaliação é `prepare → predict → evaluate`. Execute os comandos a
 partir da raiz do repositório. A instalação do pacote e a obtenção dos dados
 estão no [README principal](../README.md#início-rápido) e no

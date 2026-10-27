@@ -62,6 +62,7 @@ def test_comparison_detects_direction_and_percentage_point_tolerance(workspace, 
     evaluated(workspace, "candidate", distance=0.05, teds=0.88)
     result = comparison.compare(workspace, "base", "candidate", "basic")
     assert result["quality_regressions"] == ["table/TEDS/ALL"]
+    assert result["processing_review"] is True
     assert result["metrics"]["text_block/Edit_dist/ALL"]["gain_points"] == pytest.approx(5)
     assert (
         comparison.compare(workspace, "base", "candidate", "basic", 2.01)["verdict"]
