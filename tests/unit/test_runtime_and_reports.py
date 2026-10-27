@@ -8,9 +8,9 @@ from PIL import Image
 
 from acessilia_benchmark.adapters.acessilia import pack_images
 from acessilia_benchmark.core.scoring import compute_overall
-from acessilia_benchmark.io import read
+from acessilia_benchmark.io import read, write
 from acessilia_benchmark.processes import run_logged
-from acessilia_benchmark.reporting import normalize_numbers, summarize
+from acessilia_benchmark.reporting import normalize_numbers, processing_assessment, summarize
 from acessilia_benchmark.services.doctor import interpreter_info, resolve_python
 from acessilia_benchmark.services.evaluation import (
     config_for,
@@ -105,6 +105,41 @@ def test_non_finite_metrics_are_null_not_zero():
         "b": None,
         "c": [None, 0.0],
     }
+
+
+def test_processing_diagnostics_are_reported_without_assuming_success(tmp_path):
+    plan = {"cases": [{"id": "a", "prediction": "a.md"}, {"id": "b", "prediction": "b.md"}]}
+    write(
+        tmp_path / "predictions/a.metadata.json",
+        {
+            "technical_warnings": [],
+            "processing_diagnostics": {"pddl_visual_failures": {"pictures": {"provider": 1}}},
+        },
+    )
+    write(tmp_path / "predictions/b.metadata.json", {"technical_warnings": None})
+    result = processing_assessment(tmp_path, plan, "acessilia")
+    assert result["status"] == "reported_warnings"
+    assert result["cases"][0]["signals"] == ["visual_failures"]
+    assert result["cases"][1]["status"] == "unknown"
+    assert processing_assessment(tmp_path, plan, "imported")["status"] == "not_available"
+
+
+def test_quality_report_shows_warnings_and_their_limit(tmp_path):
+    plan = {
+        "fixture": False,
+        "cases": [{"id": "a", "prediction": "a.md"}],
+        "unique_pages": 1,
+        "dataset": "test",
+        "dataset_revision": "r",
+        "evaluator": {"commit": "c"},
+    }
+    write(tmp_path / "prediction-manifest.json", {"origin": {"kind": "acessilia"}})
+    write(tmp_path / "predictions/a.metadata.json", {"technical_warnings": ["falha visual"]})
+    summarize(tmp_path, plan, tmp_path, {}, "basic")
+    assert read(tmp_path / "summary.json")["processing"]["status"] == "reported_warnings"
+    report = (tmp_path / "report.md").read_text()
+    assert "falha visual" in report
+    assert "não comprova processamento completo" in report
 
 
 def test_fixture_report_never_claims_system_performance(tmp_path):

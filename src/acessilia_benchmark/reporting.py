@@ -7,7 +7,73 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .core.scoring import overall_details
-from .io import read, write
+from .io import digest, local_path, read, write
+
+
+def processing_assessment(destination, plan, origin, rows=None):
+    """Surface reported diagnostics without treating absent warnings as proof of success."""
+    if origin != "acessilia":
+        return {"status": "not_available", "cases": [], "origin": origin}
+    by_id = {row["id"]: row for row in rows} if rows is not None else None
+    cases = []
+    for case in plan["cases"]:
+        row = by_id.get(case["id"]) if by_id is not None else None
+        if by_id is not None and (row is None or row.get("status") != "ok"):
+            continue
+        path = local_path(destination / "predictions", case["prediction"]).with_suffix(
+            ".metadata.json"
+        )
+        if not path.is_file():
+            if row is not None and row.get("metadata_sha256") is not None:
+                raise ValueError(f"Metadados de inferência ausentes: {case['id']}")
+            cases.append({"id": case["id"], "status": "unknown"})
+            continue
+        if row is not None and digest(path) != row.get("metadata_sha256"):
+            raise ValueError(f"Metadados de inferência alterados: {case['id']}")
+        metadata = read(path)
+        warnings = metadata.get("technical_warnings")
+        valid_warnings = isinstance(warnings, list) and all(
+            isinstance(item, str) for item in warnings
+        )
+        diagnostics = metadata.get("processing_diagnostics")
+        signals = []
+        if isinstance(diagnostics, dict):
+            if diagnostics.get("pddl_unsatisfied_obligations"):
+                signals.append("unsatisfied_obligations")
+            visual = diagnostics.get("pddl_visual_failures")
+            if isinstance(visual, dict) and any(
+                isinstance(counts, dict) and any(counts.values()) for counts in visual.values()
+            ):
+                signals.append("visual_failures")
+            fusion = diagnostics.get("pddl_fusion")
+            if isinstance(fusion, dict) and fusion.get("status") == "degraded":
+                signals.append("degraded_fusion")
+            inspection = diagnostics.get("pddl_media_inspection")
+            if isinstance(inspection, dict) and inspection.get("status") == "failed":
+                signals.append("media_inspection_failed")
+        cases.append(
+            {
+                "id": case["id"],
+                "status": (
+                    "reported_warnings"
+                    if (valid_warnings and warnings) or signals
+                    else "no_reported_warnings"
+                    if valid_warnings
+                    else "unknown"
+                ),
+                "warnings": warnings if valid_warnings else None,
+                "signals": signals,
+                "diagnostics": diagnostics if isinstance(diagnostics, dict) else None,
+            }
+        )
+    status = (
+        "reported_warnings"
+        if any(c["status"] == "reported_warnings" for c in cases)
+        else "unknown"
+        if len(cases) != len(plan["cases"]) or any(c["status"] == "unknown" for c in cases)
+        else "no_reported_warnings"
+    )
+    return {"status": status, "cases": cases, "origin": origin}
 
 
 def summarize(destination, plan, artifacts, metrics, profile):
@@ -27,6 +93,7 @@ def summarize(destination, plan, artifacts, metrics, profile):
             for name in ("text_block", "table", "display_formula", "reading_order")
         },
     }
+    summary["processing"] = processing_assessment(destination, plan, origin["kind"])
     summary["evaluator_diagnostics"] = {
         name: value for name, value in metrics.items() if name not in summary["metrics"]
     }
@@ -115,6 +182,19 @@ def summarize(destination, plan, artifacts, metrics, profile):
         "```json",
         json.dumps(summary["metrics"], indent=2, ensure_ascii=False),
         "```",
+    ]
+    lines[5:5] = [
+        "",
+        "## Diagnóstico do processamento",
+        "",
+        "Avisos são sinais para revisão, não uma classificação automática de falha. "
+        "Ausência de avisos não comprova processamento completo: o Core pode não "
+        "propagar todas as falhas. As métricas medem o arquivo produzido.",
+        "",
+        "```json",
+        json.dumps(summary["processing"], indent=2, ensure_ascii=False),
+        "```",
+        "",
     ]
     if overall is not None:
         lines += [
@@ -232,6 +312,7 @@ def summarize_runtime(destination, plan):
         else None,
         "plan_sha256": digest(destination / "plan.json"),
         "inference_sha256": digest(evidence_path),
+        "processing": processing_assessment(destination, plan, "acessilia", rows),
         "coverage": {
             "planned_cases": len(expected),
             "attempted_cases": len(rows),
@@ -262,6 +343,8 @@ def summarize_runtime(destination, plan):
         "# Execução do Acessilia\n\n"
         f"Dataset: {plan['dataset']} @ {plan['dataset_revision']}\n\n"
         "Sem métricas de qualidade ou Overall neste perfil.\n\n"
+        "Diagnósticos de processamento estão incluídos abaixo; ausência de avisos "
+        "não comprova processamento completo.\n\n"
         "Tempos incluem startup do processo, preparação da entrada, cache e serviços; "
         "não medem apenas o modelo nem GPU-hora. Tempos e percentis acumulam todas "
         "as tentativas por caso, incluindo falhas, timeouts e retomadas. "
