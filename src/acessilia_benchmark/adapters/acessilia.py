@@ -72,6 +72,8 @@ def main():
         "ollama_model",
         "openrouter_model",
         "openrouter_max_tokens",
+        "data_agent_max_tokens",
+        "vision_region_max_tokens",
         "structurer",
         "pipeline_engine",
         "fusion_mode",
@@ -79,6 +81,7 @@ def main():
         "toolbox_layout_provider",
         "toolbox_pdf_provider",
         "toolbox_math_provider",
+        "toolbox_math_recognize_provider",
         "toolbox_ocr_provider",
         "toolbox_page_ocr_provider",
         "toolbox_adjudicate_provider",
@@ -93,7 +96,16 @@ def main():
         "engine": args.engine,
         "provider": args.provider,
         "execution_status": status,
-        "technical_warnings": canonical.get("technical_warnings", []),
+        "technical_warnings": canonical.get("technical_warnings"),
+        "processing_diagnostics": {
+            key: execution_metadata.get(key)
+            for key in (
+                "pddl_unsatisfied_obligations",
+                "pddl_visual_failures",
+                "pddl_fusion",
+                "pddl_media_inspection",
+            )
+        },
         "prediction_sha256": hashlib.sha256(markdown.encode()).hexdigest(),
         "input_representation": "image" if len(images) == 1 else "lossless_raster_pdf_72dpi",
     }

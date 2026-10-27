@@ -21,7 +21,9 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         ),
         "backend/service.py": (
             "async def process(source, mode):\n"
-            "    return {'text': 'converted by Core', 'metadata': {}}\n"
+            "    return {'text': 'converted by Core', 'metadata': "
+            "{'pddl_visual_failures': {'pictures': {'provider': 1}}}, "
+            "'technical_warnings': ['visual failed']}\n"
         ),
         "libs/docstruct/src/docstruct/export/markdown.py": (
             "def document_to_markdown(document):\n    return document['text']\n"
@@ -67,7 +69,15 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         timeout=15,
     )
     assert output.read_text() == "converted by Core"
-    assert read(output.with_suffix(".metadata.json"))["mode"] == "normal"
+    metadata = read(output.with_suffix(".metadata.json"))
+    assert metadata["mode"] == "normal"
+    if engine == "pipeline":
+        assert metadata["technical_warnings"] == ["visual failed"]
+        assert metadata["processing_diagnostics"]["pddl_visual_failures"] == {
+            "pictures": {"provider": 1}
+        }
+    else:
+        assert metadata["technical_warnings"] is None
 
 
 def test_render_tools_are_available_through_cli(workspace, monkeypatch):
