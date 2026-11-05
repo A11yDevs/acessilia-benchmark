@@ -1,108 +1,89 @@
-# Arquitetura do Acessilia Benchmark
+# Arquitetura
 
-O benchmark prepara amostras e avalia previsões. O Acessilia, chamado de Core
-neste guia, converte documentos; a Toolbox fornece as capacidades e os serviços
-usados pelo Core. O pacote do benchmark separa regras, execução e integração.
+O benchmark prepara datasets, executa ou importa previsões e avalia resultados.
+O Acessilia Core converte documentos; a Toolbox fornece capacidades e serviços
+usados pelo Core. Este repositório contém a CLI, os avaliadores e os adaptadores.
 
-## Estrutura e responsabilidades
+## Componentes
 
 ```text
 src/acessilia_benchmark/
-├── cli.py              # Argumentos e encaminhamento dos comandos
-├── __main__.py         # python -m acessilia_benchmark
-├── core/               # Catálogo, amostragem, integridade e pontuação
-├── services/           # Preparação de ambientes, inferência e avaliação
-├── adapters/           # Integração com o pipeline do Acessilia
-├── reporting.py        # Normalização e apresentação dos resultados
-├── io.py               # JSON atômico, hashes e caminhos seguros
-└── processes.py        # Subprocessos com logs e timeout
+├── cli.py              # comandos e argumentos
+├── core/               # catálogo, seleção, integridade e pontuação
+├── services/           # inferência, avaliação e comparação
+├── adapters/           # integração com o Acessilia
+├── reporting.py        # relatórios
+├── io.py               # persistência, hashes e caminhos
+└── processes.py        # subprocessos, logs e timeout
 ```
 
-| Módulo | Responsabilidade |
+| Área | Responsabilidade |
 | --- | --- |
-| `cli` | Argumentos e encaminhamento para os fluxos |
-| `core.workspace` | Descoberta de caminhos e validação de nomes de rodadas |
-| `core.catalog` | Catálogo, download e verificação dos snapshots |
-| `core.sampling` / `core.runs` | Amostragem, planos, integridade e cobertura de previsões |
-| `core.scoring` | Overall por protocolo, escala numérica e composição por janela |
-| `services.runtime` / `services.render_tools` | Avaliadores fixados e ferramentas de renderização |
-| `services.doctor` | Diagnóstico dos ambientes e da API Toolbox |
-| `services.inference` / `adapters.acessilia` | Execução isolada e integração com o Core |
-| `services.evaluation` / `reporting` | Avaliação, validação de artefatos e relatórios |
-| `services.comparison` | Deltas de métricas e custo entre rodadas com amostras e protocolos iguais |
-| `services.submission` | Pacote Dr.DocBench test completo com uma previsão por página |
-| `services.selfcheck` | Autoverificação com referências conhecidas |
-| `io` / `processes` | Persistência e execução de processos compartilhadas |
+| `core/` | Catálogo de datasets, amostragem, planos, hashes e cobertura |
+| `services/` | Preparar ambientes, chamar o Core, avaliar, comparar e gerar submissões |
+| `adapters/` | Executar o Core em outro processo com seu próprio interpretador |
+| `reporting.py` | Normalizar métricas e produzir relatórios legíveis |
+| `io.py`, `processes.py` | Gravação atômica, integridade e processos com timeout |
 
-`core/` não importa CLI, serviços ou adaptadores. `services/` coordena essas
-regras com os ambientes externos. `adapters/` concentra os imports específicos
-do Acessilia e executa em outro processo, usando o Python do Core. O diretório
-`core/` do benchmark contém regras locais; ele não é o repositório Acessilia.
+O `core/` deste projeto contém regras do benchmark; não é o repositório Core.
+Ele não importa CLI, serviços ou adaptadores. A CLI coordena os serviços. O
+adaptador usa o exportador Markdown compartilhado do Core.
 
-O adaptador usa `docstruct.export.markdown.document_to_markdown`, compartilhado
-com o novo harness do Core. O engine padrão chama `backend.service.process`;
-o engine `structure` chama `scripts.bench.toolbox.extract_structure` e
-`scripts.bench.core.payload_to_canonical`, sem executar o pipeline completo.
-Não há dependência dos scripts aposentados na tag `drbench-2026-snapshot`.
-
-O contexto de arquivos é recebido como uma `Workspace` explícita. A CLI usa
-`ACESSILIA_BENCHMARK_WORKSPACE` quando definido; caso contrário, procura o catálogo
-no diretório atual, em seus pais e na raiz associada à instalação do pacote.
-Os exemplos da documentação partem da raiz do checkout.
+O engine `pipeline` chama `backend.service.process` e mede o fluxo completo. O
+engine `structure` chama o harness `scripts.bench` do Core para extrair e
+exportar a estrutura; não executa toda a orquestração do produto. O engine
+`structure` requer `--provider`.
 
 ## Fluxo de uma rodada
 
-1. `prepare` verifica o snapshot e grava seleção, revisões e hashes no plano.
-2. `predict` envia imagens ao Core e registra previsões, tempos e evidências.
-   `import-predictions` pode substituir essa etapa para saídas de outro sistema.
-3. `evaluate` confere plano e previsões, executa o avaliador e gera relatórios.
+1. `prepare` verifica o snapshot, seleciona os casos e grava revisões e hashes.
+2. `predict` chama o Core e registra previsões, tempos e evidências; ou
+   `import-predictions` registra saídas de outro sistema.
+3. `evaluate` confere os artefatos, executa o avaliador e gera os relatórios.
 
-`smoke` prepara uma rodada com previsões derivadas das referências e executa o
-perfil `basic`. A origem fica identificada como autoverificação. O comando
-verifica o caminho até o avaliador sem executar o Acessilia.
+`run <dataset>` automatiza as três etapas com inferência. `smoke` verifica o
+caminho do avaliador com previsões derivadas das referências; identifica os
+resultados como autoverificação, não como score do Acessilia.
 
-Os nomes de rodada identificam diretórios em `runs/`. Planos e previsões
-existentes são preservados. Uma mesma rodada pode ser avaliada em `basic` e
-`full`, cada qual em seu diretório; repetir o mesmo perfil exige outra rodada.
+Cada rodada tem um diretório em `runs/`. Resultados e planos existentes são
+preservados. Uma rodada pode ter perfis `basic` e `full`, em diretórios separados;
+um perfil já existente não é sobrescrito. `predict --resume` repete casos
+falhos ou pendentes depois de validar as evidências. Logs, tentativas e tempos
+acumulados ficam registrados. Um lock impede inferências simultâneas na mesma
+rodada.
 
-`predict --resume` confere sistema e saídas bem-sucedidas antes de repetir
-falhas/casos pendentes. Checkpoints por caso são selados; logs e tentativas
-anteriores são preservados. Tempos acumulam todas as chamadas. Um lock impede
-duas inferências simultâneas sobre a mesma rodada. Resultados de qualidade são
-selados com hashes dos artefatos para comparação posterior.
-
-O tamanho da janela Dr.DocBench é explícito no plano (uma ou duas páginas).
-Submissões exigem uma página e cobertura completa do split test. Comparações
-recusam amostras ou agrupamentos diferentes e permanecem resultados locais.
-Veja os [fluxos de trabalho](workflows.md).
+O tamanho da janela Dr.DocBench é registrado no plano. Submissões exigem uma
+página por caso e cobertura completa do test. Comparações recusam amostras,
+agrupamentos ou protocolos incompatíveis. Veja [fluxos](workflows.md).
 
 ## Ambientes e reprodução
 
-| Ambiente | Função |
+| Ambiente | Uso |
 | --- | --- |
-| `.venv/` na raiz | Pacote, CLI, obtenção dos dados e ferramentas de desenvolvimento |
-| `evaluation/.venv/` | Dependências dos dois avaliadores, com Python 3.11.17 |
-| Ambiente do Acessilia | Pipeline do Core e clientes dos serviços de inferência |
+| Raiz do benchmark | Pacote, CLI, datasets e ferramentas de desenvolvimento |
+| `evaluation/.venv/` | Avaliadores oficiais fixados, em Python 3.11.17 |
+| Ambiente do Core | Pipeline e clientes dos serviços de inferência |
 
-O setup gera um lock Python local e o preserva nas execuções seguintes.
-Dependências transitivas podem variar entre instalações novas; o hash do lock e
-as versões instaladas são registrados nas rodadas. O manifesto de renderização
-fixa URLs e checksums dos artefatos adicionais usados pelo perfil `full`.
+O primeiro setup dos avaliadores gera um lock local, preservado em usos
+posteriores. A rodada registra o hash do lock e versões instaladas. O manifesto
+`evaluation/render-tools.lock.json` fixa URLs e checksums de ferramentas de
+renderização adicionais. Revisões locais não fixam versões de APIs, modelos ou
+caches externos; controle-as separadamente para reproduzir uma inferência.
 
-Revisões e evidências locais não congelam versões de APIs, modelos ou caches
-externos. O diagnóstico da saúde da API Toolbox também não comprova a execução
-de seus provedores. Essas condições precisam de controle operacional e de uma
-inferência real para validação.
+`doctor` verifica manifests, avaliadores, módulos do Core e a saúde da API
+Toolbox. Ele não chama os provedores nem confirma que a inferência funcionará.
 
-## Arquivos versionados e locais
+`Workspace.discover()` usa `ACESSILIA_BENCHMARK_WORKSPACE` quando definido;
+caso contrário, procura os dados a partir do diretório de execução e da
+instalação do pacote. Os exemplos deste projeto partem da raiz do checkout.
 
-| Versionado | Local, ignorado pelo Git |
+## Arquivos locais
+
+| Versionados | Locais e ignorados pelo Git |
 | --- | --- |
-| Código, testes sintéticos, documentação e CI | Datasets em `data/` e avaliadores em `vendor/` |
-| `pyproject.toml` e `evaluation/pyproject.toml` | Locks Python gerados, `.python-version` e ambientes |
-| `datasets/registry.json` e `evaluation/render-tools.lock.json` | Rodadas em `runs/`, caches, builds e logs |
-| Exemplos de configuração sem segredos | `.env`, variantes locais e `.aws/` |
+| Código, testes sintéticos, documentação, catálogo e manifestos de ferramentas | Datasets em `data/`, avaliadores em `vendor/` e rodadas em `runs/` |
+| `pyproject.toml` e manifestos de renderização | Ambientes, locks gerados, caches, builds e logs |
+| Exemplos de configuração sem segredos | `.env`, credenciais e configurações pessoais |
 
-A estrutura dos artefatos e os limites das métricas estão no
-[guia de avaliação](../evaluation/README.md). As verificações para desenvolvimento
-e o escopo da CI estão no [guia de contribuição](../CONTRIBUTING.md).
+As métricas e seus limites estão em [avaliação](../evaluation/README.md); testes
+e CI, em [contribuição](../CONTRIBUTING.md).

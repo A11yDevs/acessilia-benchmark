@@ -1,295 +1,184 @@
-# Avaliação manual
+# Avaliação e métricas
 
-Os relatórios de qualidade e runtime mostram os avisos e diagnósticos de
-processamento fornecidos pelo Core por caso. `reported_warnings` indica revisão
-necessária; `unknown` e `not_available` indicam evidência insuficiente (por
-exemplo, metadados antigos ou previsões importadas). Um aviso não é
-automaticamente uma falha, e `no_reported_warnings` não garante execução sem
-degradação: o Core pode não propagar falhas de enriquecimento matemático.
-As métricas continuam medindo o Markdown produzido, inclusive quando há avisos.
-Na comparação, `processing_review` sinaliza essa necessidade independentemente
-do veredito sobre regressão das métricas; relatórios antigos não são presumidos
-íntegros. A correção da origem das falhas silenciosas ainda depende do Core.
+Para a maioria dos casos, use `run <dataset>`: ele prepara os dados e
+avaliadores, executa a inferência e gera o relatório. Execute da raiz do
+repositório; requisitos e downloads estão no [README](../README.md) e no guia de
+[datasets](../datasets/README.md).
 
-O fluxo de avaliação é `prepare → predict → evaluate`. Execute os comandos a
-partir da raiz do repositório. A instalação do pacote e a obtenção dos dados
-estão no [README principal](../README.md#início-rápido) e no
-[guia de datasets](../datasets/README.md).
+Os relatórios mostram avisos recebidos do Core. `reported_warnings` indica que
+um caso precisa de revisão, mas não significa automaticamente uma falha;
+`unknown` ou `not_available` significam evidência
+insuficiente, por exemplo em previsões importadas ou metadados antigos. A
+ausência de avisos não garante execução sem degradação: o Core pode não propagar
+falhas de enriquecimento matemático. As métricas avaliam o Markdown produzido,
+mesmo quando há avisos. Na comparação, `processing_review` sinaliza a revisão
+independentemente da regressão de qualidade.
 
-Por padrão, `prepare` seleciona todos os casos e `evaluate` usa o perfil
-automático: `full` com CDM/Overall quando aplicáveis e `runtime` sem referências.
-Use `--limit N` para uma amostra menor; `smoke` mantém sua amostra diagnóstica.
-
-## 1. Preparar os ambientes
-
-### Avaliadores
-
-Com Linux, Git e uv disponíveis, execute:
+## Preparar os avaliadores e conferir o ambiente
 
 ```bash
 uv run acessilia-benchmark setup
-```
-
-O comando obtém os dois avaliadores em `vendor/`, verifica os commits do
-[catálogo](../datasets/registry.json) e prepara `evaluation/.venv/` com Python
-3.11.17 e as dependências de `evaluation/pyproject.toml`. A instalação inicial
-requer internet; os avaliadores usam um ambiente separado do pacote e do Core.
-
-O primeiro setup gera `evaluation/uv.lock`, preservado nos setups seguintes.
-Locks Python gerados e `.python-version` ficam fora do Git. Preserve o lock local
-para reproduzir um ambiente anterior: a resolução transitiva pode variar entre
-instalações novas. As rodadas registram seu hash e as versões instaladas.
-
-Depois do setup e do download dos dados, o perfil `basic` executa offline e sem
-GPU. O perfil `full` requer também as ferramentas de renderização descritas
-[adiante](#perfil-full-e-ferramentas-de-renderização).
-
-### Acessilia e Toolbox
-
-Para executar `predict`, o checkout do Acessilia precisa estar instalado e
-configurado, com os modelos e provedores necessários disponíveis. O benchmark
-não inicia esses serviços. Confira o ambiente antes de preparar a inferência:
-
-```bash
 uv run acessilia-benchmark doctor --acessilia-repo ../acessilia
 ```
 
-O interpretador do Core é procurado em `.venv/bin/python` e no ambiente Poetry.
-Se necessário, informe `--python /caminho/do/ambiente/bin/python` a `doctor` e
-`predict`. Links simbólicos do ambiente virtual são preservados.
+`setup` baixa os avaliadores oficiais nas revisões do
+[catálogo](../datasets/registry.json) e prepara `evaluation/.venv/` com Python
+3.11.17. A instalação inicial requer internet. O lock gerado é local e
+preservado para manter o ambiente entre execuções.
 
-Por padrão, `doctor` consulta `TOOLBOX_BASE_URL` ou `http://127.0.0.1:8002`;
-`--toolbox-url` permite escolher outra URL para o diagnóstico. Essa opção não
-altera a configuração usada pelo Core na inferência. O diagnóstico verifica
-presença dos manifests dos dados, revisão dos avaliadores, módulos do Core e
-saúde da API Toolbox. A integridade completa dos dados é verificada por
-`verify` e `prepare`; a saúde da API não comprova execução dos provedores.
+`doctor` confere manifests, avaliadores, módulos do Core e a API Toolbox; não
+chama provedores nem testa uma inferência. Por padrão, consulta
+`TOOLBOX_BASE_URL` ou `http://127.0.0.1:8002`. `--toolbox-url` muda apenas a URL
+do diagnóstico, não a configuração usada pelo Core. Para selecionar outro
+Python, passe `--python` a `doctor` e `predict`.
 
-## 2. Conferir os avaliadores sem chamar modelos
+O perfil `basic` roda offline depois do download e do setup. O perfil `full`
+também precisa das ferramentas de renderização descritas abaixo.
 
-Com os respectivos datasets baixados e o setup concluído:
+## Autoverificar os avaliadores
 
 ```bash
 uv run acessilia-benchmark smoke drdocbench-dev --run check-dr
 uv run acessilia-benchmark smoke omnidocbench --run check-omni
 ```
 
-Cada autoverificação seleciona dez casos determinísticos, incluindo texto,
-tabelas e fórmulas, constrói previsões a partir das referências e executa o
-perfil `basic`. Os resultados ficam marcados **AUTOVERIFICAÇÃO — NÃO É SCORE
-DO ACESSILIA**. As representações Markdown e os algoritmos de correspondência
-podem produzir diferenças mesmo quando a previsão vem da referência.
+`smoke` seleciona casos determinísticos, usa referências como previsões e roda
+`basic`. Os resultados são identificados como **autoverificação; não são scores
+do Acessilia**. Use outro nome a cada execução.
 
-Use outro nome ao repetir uma rodada. `smoke` também aceita
-`--data-dir /caminho/datasets` para dados em outro local.
-
-## 3. Executar uma rodada real
-
-Exemplo com dez casos do Dr.DocBench dev:
+## Executar uma rodada
 
 ```bash
-uv run acessilia-benchmark prepare drdocbench-dev --run baseline-dr --limit 10
-uv run acessilia-benchmark predict --run baseline-dr --acessilia-repo ../acessilia
-uv run acessilia-benchmark evaluate --run baseline-dr
+uv run --extra datasets acessilia-benchmark run drdocbench-dev \
+  --acessilia-repo ../acessilia --limit 10
 ```
 
-Para OmniDocBench:
+Por padrão, roda todos os casos. `--limit N` reduz a amostra; `--seed 42`
+define uma seleção determinística. O perfil automático escolhe `full` para
+Dr.DocBench dev e OmniDocBench, e `runtime` para Dr.DocBench test. Também é
+possível executar cada etapa separadamente:
 
 ```bash
-uv run acessilia-benchmark prepare omnidocbench --run baseline-omni --limit 10
-uv run acessilia-benchmark predict --run baseline-omni --acessilia-repo ../acessilia
-uv run acessilia-benchmark evaluate --run baseline-omni
+uv run acessilia-benchmark prepare drdocbench-dev --run baseline --limit 10
+uv run acessilia-benchmark predict --run baseline --acessilia-repo ../acessilia
+uv run acessilia-benchmark evaluate --run baseline
 ```
 
-### Seleção e entrada
+Cada rodada registra dataset, seleção, revisões e hashes. Dr.DocBench usa duas
+páginas consecutivas por caso por padrão; `--window-size 1` seleciona uma página
+por caso. Não cruza lacunas ou documentos, mas janelas podem se sobrepor. Omni
+usa uma página por caso. O limite conta casos, não páginas únicas.
 
-`prepare` verifica os dados e congela os casos com seed 42. `--seed N` escolhe
-outra amostra determinística; `--limit 0` seleciona todos os casos disponíveis.
-A seleção alterna fontes documentais no OmniDocBench e assuntos no Dr.DocBench.
-Use `--data-dir /caminho/datasets` se os dados estiverem em outro disco.
+Para o Core, cada janela Dr é convertida em PDF rasterizado a 72 dpi por
+PyMuPDF. JPEGs são preservados sem recompressão; o PDF não tem camada textual nem
+referências. Essa entrada fica registrada no plano.
 
-Cada caso do OmniDocBench contém uma página. Cada caso do Dr.DocBench reúne duas
-páginas consecutivas, sem atravessar lacunas ou limites de documentos. As janelas
-deslizam uma página por vez, podendo repetir páginas entre casos. O limite é de
-casos, não de páginas únicas.
+`predict` chama `backend.service.process` e o conversor Markdown do Core. As
+requisições contêm identificador e imagens, sem referências.
 
-Para o Core, cada janela do Dr.DocBench é empacotada em PDF rasterizado a 72 dpi
-via PyMuPDF. Os streams JPEG são preservados sem recompressão; não há camada
-textual ou referências. Essa variante de entrada fica registrada e não presume
-equivalência a uma chamada direta com duas imagens.
+O Core executa com diretórios isolados em `runs/<rodada>/runtime/` para dados,
+logs e temporários. O adaptador desativa dry-run e recusa estados inválidos. O
+commit do Core, dependências e configuração não secreta são registrados.
+`--timeout` define o limite em segundos por caso; o processo local é encerrado
+em timeout, mas uma requisição já enviada pode continuar no servidor. Rodadas
+incompletas não são pontuadas. Modelos, serviços externos e caches precisam ser
+controlados à parte para reproduzir a inferência.
 
-### Inferência e evidências
+## Importar previsões
 
-`predict` chama `backend.service.process` e o conversor
-`canonical_to_drbench_md` do Acessilia. As requisições contêm apenas identificador
-e imagens; as referências permanecem separadas da inferência.
-
-Dados, histórico e logs locais do Core são isolados em `runs/<rodada>/runtime/`
-por meio de `DATA_DIR`, `LOGS_DIR` e `TEMP_DIR`. O processo recebe
-`PDDL_EXECUTE_DRY_RUN=false`, e o adaptador recusa resultados de dry-run ou
-estados de execução inválidos. Configuração não secreta dos modelos e provedores,
-commit do Core e hashes de seus arquivos de dependências ficam registrados.
-
-`--timeout 1800` define o limite em segundos por caso. Em caso de timeout, o grupo
-de processos locais é encerrado; uma requisição remota já enviada pode continuar
-no servidor. Logs e falhas são registrados. Inferência incompleta não é pontuada.
-
-Para repetir a inferência, prepare outra rodada. Para comparar execuções, use a
-mesma seleção, commit, dependências, modelos, Toolbox, configuração e condição
-de cache. Versões de serviços externos e aliases de modelos não são congelados
-automaticamente pelo benchmark.
-
-### Importar previsões de outro sistema
-
-Depois de `prepare`, use `import-predictions` no lugar de `predict`:
+Depois de `prepare`, use `import-predictions` em vez de `predict`:
 
 ```bash
-uv run acessilia-benchmark import-predictions --run baseline-dr --source /caminho/markdown --label meu-sistema
-uv run acessilia-benchmark evaluate --run baseline-dr
+uv run acessilia-benchmark import-predictions --run baseline \
+  --source /caminho/markdown --label meu-sistema
+uv run acessilia-benchmark evaluate --run baseline
 ```
 
-O diretório de origem deve seguir os nomes registrados em `plan.json`: no Dr,
-`<assunto>/<uuid>_page_<início>-<fim>.md`; no Omni, o nome-base da imagem com
-extensão `.md`. Todos os casos precisam estar presentes, sem Markdown extra.
-Arquivos vazios são previsões vazias válidas.
+Os nomes dos arquivos precisam corresponder aos casos em `plan.json`: Dr usa
+`<assunto>/<uuid>_page_<início>-<fim>.md`; Omni usa o nome-base da imagem com
+extensão `.md`. Todos os casos são obrigatórios e arquivos extras são recusados;
+um arquivo vazio representa uma previsão vazia. A importação registra origem e
+hashes, sem atribuir tempos ou identidade ao Acessilia. Copiar arquivos
+diretamente para `predictions/` não os registra para avaliação.
 
-A importação registra origem e hashes, sem atribuir identidade ou tempos de
-execução ao Acessilia. Copiar arquivos diretamente para o diretório de previsões
-da rodada não basta para avaliá-los.
+## Perfis e métricas
 
-## 4. Avaliar e interpretar os resultados
+| Perfil | Métricas | Requisitos |
+| --- | --- | --- |
+| `basic` oficial | Texto, fórmulas, tabelas e ordem; TEDS de tabelas | Python dos avaliadores |
+| `full` | `basic`, CDM de fórmulas e Overall local quando disponível | Ferramentas de renderização |
+| `runtime` | Cobertura, duração, p50/p95, sucesso, falhas, timeouts e vazão | Evidências de inferência; sem referências |
 
-| Perfil | Métricas | Overall local | Requisitos adicionais |
-| --- | --- | --- | --- |
-| `basic` (opcional) | Distância de edição de texto, fórmulas, tabelas e ordem; TEDS de tabelas | Não calcula | Ambiente Python dos avaliadores |
-| `full` | Métricas de `basic` e CDM de fórmulas | Calcula quando há componentes válidos | Ferramentas de renderização |
+`evaluate --profile auto` usa o perfil correspondente ao dataset. Também é
+possível avaliar as mesmas previsões com `basic` e `full`; cada perfil tem seu
+próprio diretório e resultados existentes não são sobrescritos. `runtime` usa
+medições seladas da inferência, não calcula qualidade ou Overall e não produz
+métricas de tempo para previsões importadas sem evidências.
 
-`evaluate --timeout 1800` limita a execução do avaliador em segundos. Antes de
-avaliar, o ambiente Python é sincronizado offline com o lock local. Plano,
-previsões e evidências são conferidos antes e depois da execução. Rodadas
-incompletas, artefatos alterados ou resultados sem os componentes oficiais
-esperados são recusados.
-
-Cada perfil tem seu diretório: `runs/<rodada>/basic/` ou `runs/<rodada>/full/`.
-É possível executar os dois perfis sobre as mesmas previsões, mas um diretório
-de avaliação existente não é sobrescrito.
-
-### Perfil full e ferramentas de renderização
+### Perfil `full`
 
 ```bash
-uv run acessilia-benchmark evaluate --run baseline-dr --profile full
+uv run acessilia-benchmark evaluate --run baseline --profile full
 ```
 
-O perfil exige TeX Live com recursos CJK, Ghostscript e ImageMagick 7 (`magick`).
-O Dr.DocBench também requer Node.js para seu tokenizador LaTeX. Para tabelas
-LaTeX, pode ser necessário `latexmlc`. `setup` instala as dependências Python;
-o comando de avaliação confere as ferramentas externas e registra suas versões.
-
-Em Linux x86_64 com `dpkg-deb`, há um instalador local dos artefatos adicionais,
-preparado para Ubuntu 24.04:
+Requer TeX Live com CJK, Ghostscript, ImageMagick 7 (`magick`) e Node.js para o
+tokenizador DrDocBench; tabelas LaTeX podem requerer `latexmlc`. Em Linux x86_64
+com `dpkg-deb`, instale os artefatos fixados e depois prepare os avaliadores:
 
 ```bash
+uv run acessilia-benchmark setup
 uv run acessilia-benchmark setup-render-tools
-uv run acessilia-benchmark evaluate --run baseline-dr --profile full
 ```
 
-O instalador usa URLs e SHA-256 do [manifesto de renderização](render-tools.lock.json)
-para obter ImageMagick 7.1.2-34, fontes, pacotes CJK e `match-at` 0.1.0, dependência
-do tokenizador Dr cujo arquivo compilado não acompanha o checkout. Os arquivos
-ficam em `data/tools/` e no checkout local do tokenizador; pacotes do sistema não
-são alterados. Execute `setup` antes do instalador.
+O instalador guarda ferramentas e fontes em `data/tools/` e não altera os
+pacotes do sistema. Em outras distribuições, instale os requisitos conforme os
+avaliadores e deixe `magick` no `PATH`. Não instale ferramentas enquanto uma
+avaliação estiver rodando. Falhas de renderização invalidam a avaliação; não
+devem ser interpretadas como perda de qualidade do sistema.
 
-Ainda são necessários TeX Live (latex-base, latex-extra, fontes recomendadas e
-XeTeX), Ghostscript, fontconfig e Node.js no host. Em outras distribuições,
-prepare o ambiente conforme a documentação do avaliador e disponibilize
-`magick` no `PATH`.
+### Overall local
 
-A instalação pode ser repetida, mas não deve ocorrer enquanto avaliações estão
-em curso. O perfil `full` descobre as ferramentas e fontes locais sem alterar o
-ambiente do processo principal, preservando configurações explícitas. Falhas de
-renderização detectadas e referências sem artefatos renderizados invalidam a
-avaliação; não devem ser tratadas como perda de qualidade do sistema.
+O Overall usa escala 0–100. Componentes, protocolo e motivos de indisponibilidade
+ficam em `summary.json`, em `overall_details`.
 
-### Overall por dataset
-
-O Overall local usa escala 0–100. O protocolo, os componentes e os motivos de
-indisponibilidade ficam em `summary.json`, no campo `overall_details`.
-
-- **OmniDocBench:** `100 * ((1 - Text ED) + TEDS + CDM) / 3`. Text ED usa
+- **OmniDocBench:** `100 × ((1 − Text ED) + TEDS + CDM) / 3`. Text ED usa
   `text_block.all.Edit_dist.ALL_page_avg`; TEDS e CDM usam `page.*.ALL`, conforme
-  o [resumo do avaliador fixado](https://github.com/opendatalab/OmniDocBench/blob/f133a71e9e91c3621c7ce8994200a7b394a06eb3/src/runtime/eval_report.py).
-  Os três componentes precisam ser finitos. Médias por página não são
-  substituídas por médias de blocos ou do documento inteiro.
+  o [avaliador fixado](https://github.com/opendatalab/OmniDocBench/blob/f133a71e9e91c3621c7ce8994200a7b394a06eb3/src/runtime/eval_report.py).
+  Os três componentes precisam ser finitos; médias por página não são trocadas
+  por médias de blocos ou documento.
 - **Dr.DocBench dev:** média dos componentes disponíveis por janela, seguida da
-  média das janelas pontuáveis. Texto e ordem usam `(1 - ED) * 100`; TEDS e CDM
-  usam a média dos blocos daquela janela multiplicada por 100. As distâncias
-  por janela vêm dos JSONs oficiais `*_per_page_edit.json`.
+  média das janelas pontuáveis. Texto e ordem usam `(1 − ED) × 100`; TEDS e CDM
+  usam a média dos blocos da janela multiplicada por 100. Edit distance vem dos
+  JSONs oficiais `*_per_page_edit.json`.
 
 A composição Dr segue a [dataset card](https://huggingface.co/datasets/2077AIDataFoundation/DrDocBench#supported-tasks)
-aplicada à unidade multipágina do avaliador fixado. O
-[desafio](https://drdocbench-challenge.abaka-pages.com/#evaluation) usa páginas
-individuais; este resultado por janela não é um score oficial do desafio. Ordem
-de leitura entra no Overall Dr, mas não no Overall Omni.
+aplicada à entrada multipágina do avaliador. O desafio oficial usa páginas
+individuais; o Overall local por janela não equivale ao score do desafio. Ordem
+de leitura entra no Overall Dr, mas não no Omni. Métricas ausentes não viram
+zero; componentes fora de [0,1] ou valores booleanos são recusados. Um Overall
+disponível não comprova posição em ranking.
 
-As métricas numéricas consumidas pela agregação usam frações em [0,1]. Valores
-fora da escala e booleanos são recusados. Ausência de um tipo de elemento não
-vira zero; uma métrica ausente em um bloco efetivamente pontuado é falha. No
-Omni, a ausência de qualquer um dos três componentes impede calcular Overall.
-Um Overall disponível em `full` não comprova posição no ranking.
+## Relatórios e limites
 
-### Artefatos da rodada
+Os relatórios ficam em `runs/<rodada>/<perfil>/`; runtime fica em
+`runs/<rodada>/runtime-report/`. `summary.json` contém dados estruturados e
+`report.md` facilita a leitura. Os artefatos incluem plano,
+requisições, previsões, manifesto de hashes, configuração, logs e resultados do
+avaliador conforme as etapas executadas. Selos `.sha256` detectam alterações,
+mas não comprovam autoria. Planos antigos com schema 1 exigem nova preparação;
+relatórios históricos continuam legíveis.
 
-```text
-runs/<rodada>/
-  plan.json                  # seleção, revisões e hashes de entradas/referências
-  requests/                  # identificador e imagens de cada caso
-  prediction-manifest.json   # origem, hashes das previsões e evidências
-  predictions/               # Markdown e, com predict, metadados por caso
-  system.json                # Core e ambiente, quando predict foi usado
-  inference.json             # tentativas e estado final, quando predict foi usado
-  timings.jsonl              # tempo por tentativa, quando predict foi usado
-  logs/                      # stdout/stderr do Core, quando predict foi usado
-  runtime/                   # armazenamento isolado do Core
-  basic/                     # full/ tem a mesma organização de avaliação
-    config.json              # configuração fornecida ao avaliador
-    execution.json           # comando, versões, hashes e estado da avaliação
-    evaluator.log            # saída do avaliador oficial
-    result/                  # métricas e pares de blocos oficiais
-    summary.json             # métricas, cobertura, tempos e piores blocos
-    report.md                # relatório legível com links para as imagens
-```
+Revise cobertura, casos sem pares pontuados e blocos de maior erro. Atribua
+severidade conferindo imagem, referência e previsão. Os tempos incluem inicializar
+processos, converter janelas, cache e serviços. p50/p95 são por caso e a vazão
+conta páginas repetidas entre janelas. Não há medição de GPU-hora, pico de
+memória, latência interna do modelo ou concorrência.
 
-O Omni também grava `ground-truth.json` com as referências selecionadas. Selos
-`.sha256` acompanham os artefatos protegidos; eles detectam alterações, mas não
-são assinaturas de autoria. Planos antigos com schema 1 exigem nova preparação;
-preserve seus relatórios históricos.
-
-Métricas não finitas são normalizadas como `null`, sem inventar score zero.
-Confira a cobertura e os casos sem pares pontuados. Os blocos de maior erro
-servem como triagem quantitativa; revise imagem, referência e previsão para
-atribuir severidade ao problema.
-
-Os tempos incluem inicialização do processo, conversão da janela em PDF, cache
-e serviços chamados pelo Core. p50/p95 são por caso; a taxa de páginas por minuto
-conta repetições entre janelas. Não há medição de GPU-hora, pico de memória,
-latência interna isolada de modelo ou vazão concorrente.
-
-## Validação e referências
-
-Os [testes de desenvolvimento](../CONTRIBUTING.md#testes) distinguem testes
-unitários, integrações com avaliadores e inferência real. Dados, previsões,
-checkouts dos avaliadores e rodadas ficam locais e ignorados pelo Git.
-Autoverificação e CI não comprovam disponibilidade de provedores, execução em
-produção ou qualidade do Acessilia.
-
-- [Dr.DocBench](https://github.com/2077AI/DrDocBench): avaliador e protocolo multipágina.
-- [OmniDocBench](https://github.com/opendatalab/OmniDocBench): avaliador, protocolo e ferramentas de renderização.
-
-## Execução sem referências
-
-O split `drdocbench-test` usa `prepare` e `predict` normalmente. O relatório
-`runtime-report/` é gerado pelo `predict`, inclusive para rodadas com falhas.
-Para regenerá-lo, execute `evaluate --run <rodada> --profile runtime`.
-Este perfil usa as medições seladas de inferência, dispensa o setup dos avaliadores
-e não calcula qualidade ou Overall. Consulte o [guia do split test](../datasets/README.md#drdocbench-test)
-para comandos, contagens e limites das métricas.
+O split test DrDocBench não tem referências locais e gera apenas relatório
+runtime. `predict` já o produz, inclusive com falhas; para regenerar, execute
+`evaluate --profile runtime`. A submissão oficial requer cobertura completa e
+avaliação externa. Testes unitários, autoverificação e CI não comprovam
+provedores, produção ou qualidade real do Acessilia. Veja
+[contribuição](../CONTRIBUTING.md) e os avaliadores oficiais de
+[Dr.DocBench](https://github.com/2077AI/DrDocBench) e
+[OmniDocBench](https://github.com/opendatalab/OmniDocBench).

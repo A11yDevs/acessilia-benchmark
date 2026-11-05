@@ -1,159 +1,125 @@
 # Acessilia Benchmark
 
-Ferramentas para avaliar a conversão de documentos do Acessilia com Dr.DocBench
-e OmniDocBench. O benchmark prepara os dados, seleciona amostras, executa a
-inferência e produz relatórios de qualidade e tempo de execução.
-
-O comando `run` automatiza a preparação, inferência e geração de métricas.
-O Acessilia e os serviços que ele utiliza precisam estar configurados; Docker
-pode isolar os ambientes Python. Também há comparação de rodadas, retomada de
-inferência, geração de submissões Dr.DocBench e um job Slurm. Badges e publicação
-de rankings ficam para etapas futuras.
+CLI para executar e avaliar a conversão de documentos pelo Acessilia em
+Dr.DocBench e OmniDocBench. O fluxo baixa e verifica dados, executa inferência e
+gera relatórios. Também há comparação de rodadas, retomada, submissão
+Dr.DocBench, execução Slurm e autoverificação dos avaliadores.
 
 ## Início rápido
 
-Execute a partir da raiz do repositório, com Linux, Git,
-[uv](https://docs.astral.sh/uv/getting-started/installation/) e Python 3.11–3.13.
-A instalação inicial requer internet. Reserve aproximadamente 1,9 GB para os três
-snapshots, além de espaço para caches, ambientes, avaliadores e resultados.
-
-Com um checkout do Core e seus serviços configurados, execute:
+Requisitos: Linux, Git, [uv](https://docs.astral.sh/uv/getting-started/installation/)
+e Python 3.11–3.13. Deixe o Core e os serviços Toolbox/provedores configurados.
+Com os repositórios em pastas irmãs, execute da raiz deste repositório:
 
 ```bash
 uv run --extra datasets acessilia-benchmark run drdocbench-dev --acessilia-repo ../acessilia
 ```
 
-O comando baixa os dados ausentes, verifica a integridade, prepara os avaliadores,
-executa todo o dataset e gera os relatórios. O perfil automático usa `full` com
-CDM e Overall quando aplicáveis; sem referências, usa `runtime`. Se faltarem
-ferramentas de CDM, a preparação falha sem reduzir o perfil silenciosamente.
-Os requisitos de renderização estão no [guia de avaliação](evaluation/README.md).
+Esse comando roda todos os casos dev, usando janelas padrão de duas páginas.
+Para uma amostra menor, acrescente `--limit 10`. O `run` baixa os dados ausentes,
+prepara os avaliadores, faz a inferência e gera o relatório. O perfil `auto` usa
+`full` para dev e OmniDocBench, e `runtime` para Dr.DocBench test. Teste não tem
+referências locais para métricas de qualidade.
 
-A rodada recebe um nome único e mostra o caminho do relatório ao terminar:
-`runs/NOME/full/report.md` ou `runs/NOME/runtime-report/report.md`.
+### Métricas iniciais nos três datasets
 
-| Opção | Quando usar |
+O fluxo abaixo usa uma página por caso Dr.DocBench e todos os casos dos três
+datasets. Para uma amostra rápida, acrescente `--limit 10` a cada comando.
+
+```bash
+export ACESSILIA_REPO=../acessilia
+uv run --extra datasets acessilia-benchmark run drdocbench-dev --window-size 1
+uv run --extra datasets acessilia-benchmark run omnidocbench
+uv run --extra datasets acessilia-benchmark run drdocbench-test --window-size 1
+```
+
+Opcionalmente, confira o ambiente antes de iniciar:
+
+```bash
+uv run acessilia-benchmark doctor --acessilia-repo ../acessilia
+```
+
+`doctor` verifica o ambiente do Core e a API da Toolbox; não testa inferência
+nos provedores. A qualidade de uma rodada real também depende dos serviços,
+modelos e provedores configurados no Core.
+
+Cada rodada recebe um nome único. O relatório fica em
+`runs/<rodada>/<perfil>/report.md` ou, para runtime, em
+`runs/<rodada>/runtime-report/report.md`. Dev e Omni têm referências e geram métricas
+de qualidade; test gera métricas de execução. Para detalhes de seleção, perfis e
+limites, consulte [avaliação](evaluation/README.md).
+
+## Opções e fluxos avançados
+
+| Opção | Uso |
 | --- | --- |
-| `--limit 10` | Executar uma amostra menor; o padrão é todo o dataset |
-| `--window-size 1` | Dr.DocBench por página; o padrão histórico é uma janela de duas páginas |
-| `--engine structure --provider docling` | Medir extração de um provider pela Toolbox; requer casos de uma página |
-| `--run NOME` | Escolher o nome da rodada; resultados existentes são preservados |
-| `--python CAMINHO` | Escolher o interpretador do Core em vez de detectar .venv/Poetry |
-| `--data-dir CAMINHO` | Armazenar snapshots em outro diretório |
-| `--skip-setup` | Reutilizar ambientes e renderizadores já preparados |
-| `--offline --skip-setup` | Não baixar dados nem preparar ambientes; inferência ainda pode usar rede |
+| `--limit 10` | Executar uma amostra de dez casos; sem essa opção, roda todos |
+| `--window-size 1` | Usar uma página por caso Dr.DocBench; o padrão é duas |
+| `--engine structure --provider docling` | Medir um provider da Toolbox sem executar o pipeline completo |
+| `--run NOME` | Definir o nome da rodada |
+| `--python CAMINHO` | Escolher o interpretador do Core |
+| `--data-dir CAMINHO` | Guardar os datasets em outro local |
+| `--skip-setup` | Reutilizar ambientes e renderizadores preparados |
+| `--offline --skip-setup` | Não baixar dados nem preparar ambientes; os serviços ainda podem usar rede |
 
-Defina `ACESSILIA_REPO` e, opcionalmente, `ACESSILIA_PYTHON` no ambiente para
-omitir esses caminhos. Os comandos individuais `prepare`, `predict` e `evaluate`
-continuam disponíveis. Por padrão, cada caso contém duas páginas no Dr.DocBench
-e uma no OmniDocBench. Use `--window-size 1` para casos Dr.DocBench de uma página.
-`--limit` conta casos, não páginas únicas.
-
-### Baselines e regressões
-
-O engine padrão `pipeline` mede o fluxo completo do Acessilia. O engine
-`structure` reutiliza o novo harness do Core para medir providers como Docling
-e MinerU com o mesmo protocolo de avaliação deste repositório.
+Para comparar providers e detectar regressões, rode a mesma amostra e protocolo:
 
 ```bash
 uv run --extra datasets acessilia-benchmark run drdocbench-dev \
-  --run docling-dev --acessilia-repo ../acessilia \
-  --engine structure --provider docling --window-size 1 --limit 30
+  --run docling-dev --acessilia-repo ../acessilia --engine structure \
+  --provider docling --window-size 1 --limit 30
 uv run acessilia-benchmark compare baseline candidate --profile full --fail-on-regression
 ```
 
-`baseline` e `candidate` são rodadas já avaliadas com a mesma amostra. A
-comparação verifica integridade e protocolo, mostra deltas e recusa cobertura
-incompatível. Para retomar falhas, use `predict --resume` com o mesmo engine e
-provider. Veja o [guia de fluxos](docs/workflows.md) para exemplos completos,
-submissão Dr.DocBench test, limites das métricas e execução Slurm.
+`compare` confere amostra, cobertura e protocolo antes de calcular deltas.
+Consulte [fluxos](docs/workflows.md) para retomada, importação de previsões,
+submissão e Slurm. Os comandos individuais `prepare`, `predict` e `evaluate`
+permitem controlar cada etapa.
 
-### Docker
+## Docker
 
-Com Docker Engine e Compose disponíveis, o mesmo fluxo roda em ambiente isolado:
+Com Docker Engine e Compose:
 
 ```bash
 docker compose run --build --rm benchmark drdocbench-dev
 ```
 
-Por padrão, o Core fica em `../acessilia`; para outro local, defina
-`ACESSILIA_REPO`. O checkout precisa incluir `.git` e um `uv.lock` atual
-(gerado com `uv lock` no Core). O container usa esse lock, copia o código para
-um diretório temporário e instala as dependências sem alterar o checkout nem
-usar o `.venv` do host. O perfil completo com ferramentas locais usa Linux x86_64.
+O Core fica em `../acessilia` por padrão. Defina `ACESSILIA_REPO` para outro
+checkout. O checkout precisa conter `.git` e um `uv.lock` atual. Dados e
+resultados ficam em `data/` e `runs/` no host; defina `BENCHMARK_DATA_DIR` ou
+`BENCHMARK_RUNS_DIR` para movê-los. Os avaliadores e seu ambiente permanecem em
+volumes Docker, mesmo após remover o container. A configuração
+de modelos e credenciais vem do próprio Core; Toolbox e provedores devem estar
+acessíveis dentro do container. A URL padrão da Toolbox é
+`http://host.docker.internal:8002`; use `TOOLBOX_BASE_URL` para alterá-la.
+Veja [arquitetura](docs/architecture.md) para os limites de reprodução.
 
-A configuração de modelos e credenciais é a do próprio Core, incluindo seu
-`.env`; não é necessário outro arquivo de configuração para o benchmark.
-Toolbox e provedores precisam estar disponíveis. A URL padrão da Toolbox no
-Compose é `http://host.docker.internal:8002`; para outra URL, defina
-`TOOLBOX_BASE_URL` no ambiente ao chamar o Compose. Os demais serviços
-configurados no Core também precisam de endereços acessíveis pelo container.
-
-Datasets e resultados permanecem em `data/` e `runs/` no host. Use
-`BENCHMARK_DATA_DIR` e `BENCHMARK_RUNS_DIR` para mudar esses locais. Avaliadores
-e seu ambiente ficam em volumes Docker; remover o container preserva esses
-dados. `--build` incorpora alterações do código. Para reprodução estrita,
-preserve também a imagem construída e as versões dos serviços externos.
-
-Dados, resultados, caches, credenciais, locks gerados e configurações locais não
-são versionados nem enviados ao contexto de construção da imagem. Os planos
-registram caminhos absolutos apenas nos resultados locais; execute as etapas
-de uma rodada no mesmo ambiente.
-
-Para conferir a infraestrutura sem chamar o Acessilia:
+Para verificar os avaliadores sem chamar o Acessilia:
 
 ```bash
 uv run acessilia-benchmark smoke drdocbench-dev --run check-dr
 ```
 
-A autoverificação usa referências conhecidas como previsões e não mede a
-qualidade do Acessilia. Consulte o [guia de avaliação](evaluation/README.md) para
-perfis, importação de previsões, artefatos e interpretação dos resultados.
+`smoke` usa referências conhecidas como previsões e não mede a qualidade do
+Acessilia.
 
-## Datasets
+## Datasets e condições de uso
 
-| Identificador | Conteúdo | Revisão fixada |
+| Dataset | Conteúdo | Resultado local |
 | --- | --- | --- |
-| `drdocbench-dev` | 986 páginas em 66 documentos do split dev do Dr.DocBench | `7a2bc3882dff68e883fb55d10d4df22865ce2b07` |
-| `drdocbench-test` | 509 páginas em 34 documentos; referências retidas; métricas de execução | `7a2bc3882dff68e883fb55d10d4df22865ce2b07` |
-| `omnidocbench` | 1.651 imagens de páginas e anotações estruturadas | `aa1ee96d106dbe53d0ae59474d75c6e6d9b53fec` |
+| `drdocbench-dev` | 986 páginas, 66 documentos | Qualidade e execução; resultado por janela não é o score oficial |
+| `drdocbench-test` | 509 páginas, 34 documentos; referências retidas | Apenas execução; sem score local de qualidade |
+| `omnidocbench` | 1.651 imagens de página e anotações | Qualidade e execução |
 
-O [catálogo](datasets/registry.json) reúne revisões, fontes, inventários e commits
-dos avaliadores. Os dados são obtidos das fontes oficiais e armazenados
-localmente; este repositório distribui as ferramentas, sem incluir os corpora.
-Veja [preparação e organização dos dados](datasets/README.md) para baixar o
-OmniDocBench, usar outro disco e verificar a integridade dos arquivos.
+Revisões, fontes e inventários estão em [`datasets/registry.json`](datasets/registry.json).
+Os dados são baixados para uso local e não estão incluídos no repositório.
+Consulte [datasets](datasets/README.md) para download, integridade, estrutura e
+condições de uso. Não redistribua corpora sem confirmar os direitos aplicáveis.
 
-## Resultados e limites
+## Documentação
 
-Os relatórios registram cobertura, métricas, origem das previsões e, quando há
-inferência pelo benchmark, tempos por caso e páginas processadas por minuto.
-Esses tempos incluem o processo do Core e os serviços chamados; não medem
-isoladamente a latência do modelo, o uso de memória ou GPU-hora.
-
-Overall local depende do dataset, da amostra e do protocolo. Resultados do
-Dr.DocBench dev por janela não equivalem ao score oficial do desafio. Uma pequena
-rodada real verifica o funcionamento do fluxo; uma baseline representativa
-exige uma amostra mais ampla e condições de execução registradas.
-
-## Condições de uso
-
-As condições registradas no catálogo distinguem dados, anotações e código:
-
-- **Dr.DocBench:** anotações CC0-1.0; os documentos originais mantêm os direitos
-  dos respectivos titulares. Consulte a [dataset card oficial](https://huggingface.co/datasets/2077AIDataFoundation/DrDocBench).
-- **OmniDocBench:** o aviso oficial destina o dataset a pesquisa e exclui uso
-  comercial. A licença Apache-2.0 do avaliador é distinta das condições dos dados.
-  Consulte o [aviso de copyright](https://github.com/opendatalab/OmniDocBench#copyright-statement).
-
-## Desenvolvimento
-
-O pacote instalável fica em `src/acessilia_benchmark/` e fornece as CLIs
-`acessilia-benchmark` e `acessilia-datasets`. Também pode ser executado com
-`uv run python -m acessilia_benchmark`.
-
+- [Datasets](datasets/README.md): baixar, verificar e entender os snapshots.
+- [Avaliação](evaluation/README.md): perfis, métricas, relatórios e avisos.
+- [Fluxos](docs/workflows.md): comparação, retomada, submissão e Slurm.
+- [Arquitetura](docs/architecture.md): componentes e ambientes isolados.
 - [Contribuição](CONTRIBUTING.md): ambiente, testes e convenções.
-- [Arquitetura](docs/architecture.md): responsabilidades, dependências e ambientes.
-- [Fluxos](docs/workflows.md): providers, regressões, retomada, submissão e Slurm.
-- [Datasets](datasets/README.md): obtenção, integridade e estrutura dos arquivos.
-- [Avaliação](evaluation/README.md): execução, métricas e leitura dos relatórios.
