@@ -45,6 +45,8 @@ def processing_assessment(destination, plan, origin, rows=None):
                 isinstance(counts, dict) and any(counts.values()) for counts in visual.values()
             ):
                 signals.append("visual_failures")
+            if diagnostics.get("pddl_extraction_degraded") is True:
+                signals.append("extraction_degraded")
             fusion = diagnostics.get("pddl_fusion")
             if isinstance(fusion, dict) and fusion.get("status") == "degraded":
                 signals.append("degraded_fusion")

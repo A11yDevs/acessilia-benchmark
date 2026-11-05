@@ -113,13 +113,20 @@ def test_processing_diagnostics_are_reported_without_assuming_success(tmp_path):
         tmp_path / "predictions/a.metadata.json",
         {
             "technical_warnings": [],
-            "processing_diagnostics": {"pddl_visual_failures": {"pictures": {"provider": 1}}},
+            "processing_diagnostics": {
+                "pddl_visual_failures": {"pictures": {"provider": 1}},
+                "pddl_extraction_degraded": True,
+                "pddl_extraction_failures": {"mineru": "TimeoutError"},
+            },
         },
     )
     write(tmp_path / "predictions/b.metadata.json", {"technical_warnings": None})
     result = processing_assessment(tmp_path, plan, "acessilia")
     assert result["status"] == "reported_warnings"
-    assert result["cases"][0]["signals"] == ["visual_failures"]
+    assert result["cases"][0]["signals"] == [
+        "visual_failures",
+        "extraction_degraded",
+    ]
     assert result["cases"][1]["status"] == "unknown"
     assert processing_assessment(tmp_path, plan, "imported")["status"] == "not_available"
 

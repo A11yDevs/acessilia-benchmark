@@ -102,7 +102,10 @@ def main():
             for key in (
                 "pddl_unsatisfied_obligations",
                 "pddl_visual_failures",
+                "pddl_toolbox_availability",
                 "pddl_fusion",
+                "pddl_extraction_degraded",
+                "pddl_extraction_failures",
                 "pddl_media_inspection",
             )
         },

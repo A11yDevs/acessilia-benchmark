@@ -22,7 +22,10 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         "backend/service.py": (
             "async def process(source, mode):\n"
             "    return {'text': 'converted by Core', 'metadata': "
-            "{'pddl_visual_failures': {'pictures': {'provider': 1}}}, "
+            "{'pddl_visual_failures': {'pictures': {'provider': 1}}, "
+            "'pddl_extraction_degraded': True, "
+            "'pddl_extraction_failures': {'mineru': 'TimeoutError'}, "
+            "'pddl_toolbox_availability': {'mode': 'observe', 'applied': False}}, "
             "'technical_warnings': ['visual failed']}\n"
         ),
         "libs/docstruct/src/docstruct/export/markdown.py": (
@@ -75,6 +78,14 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         assert metadata["technical_warnings"] == ["visual failed"]
         assert metadata["processing_diagnostics"]["pddl_visual_failures"] == {
             "pictures": {"provider": 1}
+        }
+        assert metadata["processing_diagnostics"]["pddl_extraction_degraded"] is True
+        assert metadata["processing_diagnostics"]["pddl_extraction_failures"] == {
+            "mineru": "TimeoutError"
+        }
+        assert metadata["processing_diagnostics"]["pddl_toolbox_availability"] == {
+            "mode": "observe",
+            "applied": False,
         }
     else:
         assert metadata["technical_warnings"] is None
