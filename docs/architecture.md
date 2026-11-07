@@ -70,8 +70,11 @@ posteriores. A rodada registra o hash do lock e versões instaladas. O manifesto
 renderização adicionais. Revisões locais não fixam versões de APIs, modelos ou
 caches externos; controle-as separadamente para reproduzir uma inferência.
 
-`doctor` verifica manifests, avaliadores, módulos do Core e a saúde da API
-Toolbox. Ele não chama os provedores nem confirma que a inferência funcionará.
+`doctor` verifica manifests, avaliadores, módulos/configuração do Core, saúde da
+API Toolbox e dos providers selecionados em cada endpoint configurado. Não roda
+inferência real. `predict` faz a mesma pré-verificação, recusa iniciar se um
+provider estiver indisponível e registra a identidade/versionamento da Toolbox
+em `system.json`; isso não garante sucesso de uma chamada ao modelo.
 
 `Workspace.discover()` usa `ACESSILIA_BENCHMARK_WORKSPACE` quando definido;
 caso contrário, procura os dados a partir do diretório de execução e da

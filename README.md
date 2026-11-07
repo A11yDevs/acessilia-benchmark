@@ -39,9 +39,12 @@ Opcionalmente, confira o ambiente antes de iniciar:
 uv run acessilia-benchmark doctor --acessilia-repo ../acessilia
 ```
 
-`doctor` verifica o ambiente do Core e a API da Toolbox; não testa inferência
-nos provedores. A qualidade de uma rodada real também depende dos serviços,
-modelos e provedores configurados no Core.
+`doctor` verifica o ambiente do Core, os endpoints Toolbox configurados (inclui
+failover) e a saúde dos providers selecionados; não executa inferência nem
+confirma qualidade. `predict` repete essa pré-verificação antes de gravar a
+rodada e registra a identidade da API e dos providers em `system.json`. A chave
+da API é usada apenas na consulta autenticada e não aparece nos artefatos. A
+qualidade de uma rodada também depende dos serviços, modelos e provedores do Core.
 
 Cada rodada recebe um nome único. O relatório fica em
 `runs/<rodada>/<perfil>/report.md` ou, para runtime, em
@@ -68,10 +71,14 @@ Para comparar providers e detectar regressões, rode a mesma amostra e protocolo
 uv run --extra datasets acessilia-benchmark run drdocbench-dev \
   --run docling-dev --acessilia-repo ../acessilia --engine structure \
   --provider docling --window-size 1 --limit 30
-uv run acessilia-benchmark compare baseline candidate --profile full --fail-on-regression
+uv run acessilia-benchmark compare baseline candidate --profile full \
+  --fail-on-regression --fail-on-processing-review
 ```
 
 `compare` confere amostra, cobertura e protocolo antes de calcular deltas.
+`--fail-on-processing-review` também retorna código 1 quando algum resultado
+tem avisos ou evidência insuficiente, para um gate não aceitar silenciosamente
+uma rodada que exige revisão.
 Consulte [fluxos](docs/workflows.md) para retomada, importação de previsões,
 submissão e Slurm. Os comandos individuais `prepare`, `predict` e `evaluate`
 permitem controlar cada etapa.

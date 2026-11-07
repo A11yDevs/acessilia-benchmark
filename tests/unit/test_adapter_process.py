@@ -25,7 +25,9 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
             "{'pddl_visual_failures': {'pictures': {'provider': 1}}, "
             "'pddl_extraction_degraded': True, "
             "'pddl_extraction_failures': {'mineru': 'TimeoutError'}, "
-            "'pddl_toolbox_availability': {'mode': 'observe', 'applied': False}}, "
+            "'pddl_toolbox_availability': {'mode': 'observe', 'applied': False}, "
+            "'pddl_formula_diagnostics': {'status': 'degraded'}, "
+            "'pddl_external_provider_limits': {'provider': 'docling-math'}}, "
             "'technical_warnings': ['visual failed']}\n"
         ),
         "libs/docstruct/src/docstruct/export/markdown.py": (
@@ -86,6 +88,12 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         assert metadata["processing_diagnostics"]["pddl_toolbox_availability"] == {
             "mode": "observe",
             "applied": False,
+        }
+        assert metadata["processing_diagnostics"]["pddl_formula_diagnostics"] == {
+            "status": "degraded"
+        }
+        assert metadata["processing_diagnostics"]["pddl_external_provider_limits"] == {
+            "provider": "docling-math"
         }
     else:
         assert metadata["technical_warnings"] is None

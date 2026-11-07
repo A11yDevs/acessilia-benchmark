@@ -14,6 +14,7 @@ from ..io import digest, local_path, read, seal, verify_seal, write
 from ..processes import git, run_logged
 from ..reporting import summarize_runtime
 from .doctor import resolve_python
+from .toolbox import check_toolbox, read_toolbox_settings
 
 
 def predict(
@@ -39,6 +40,8 @@ def predict(
 def _predict(workspace, name, repo, python, timeout, engine, provider, resume):
     if engine not in {"pipeline", "structure"} or (provider and engine != "structure"):
         raise ValueError("Provider explícito requer --engine structure.")
+    if engine == "structure" and not provider:
+        raise ValueError("Engine structure requer --provider.")
     if timeout <= 0:
         raise ValueError("Timeout deve ser positivo.")
     destination, plan = load_plan(workspace, name)
@@ -51,6 +54,25 @@ def _predict(workspace, name, repo, python, timeout, engine, provider, resume):
         raise ValueError("Previsões já existem; crie outra rodada para evitar mistura.")
     repo = repo.expanduser().resolve()
     selected, interpreter = resolve_python(repo, python)
+    toolbox_settings = read_toolbox_settings(selected, repo)
+    selected_providers = toolbox_settings.providers if engine == "pipeline" else (provider,)
+    pinned_providers = toolbox_settings.pinned_providers if engine == "pipeline" else ()
+    toolbox = check_toolbox(
+        toolbox_settings.endpoints,
+        selected_providers,
+        toolbox_settings.api_key,
+        pinned_providers,
+    )
+    if not toolbox["ok"]:
+        failed_providers = [
+            provider for provider, status in toolbox["providers"].items() if not status["ok"]
+        ]
+        detail = (
+            " providers sem saúde: " + ", ".join(failed_providers)
+            if failed_providers
+            else " API Toolbox indisponível"
+        )
+        raise ValueError("Pré-verificação Toolbox falhou; execute doctor para detalhes." + detail)
     for case in plan["cases"]:
         request = local_path(destination / "requests", case["prediction"] + ".json")
         if read(request) != {"id": case["id"], "images": case["images"]}:
@@ -62,6 +84,7 @@ def _predict(workspace, name, repo, python, timeout, engine, provider, resume):
         "diff_sha256": hashlib.sha256(git(repo, "diff", "HEAD").encode()).hexdigest(),
         "python": str(selected),
         "interpreter": interpreter,
+        "toolbox_runtime": toolbox["identity"],
         "input_representation": "original image; lossless raster PDF for 2-page windows",
         "cache": "isolated Core storage; external provider caches follow server configuration",
         "mode": "normal",
@@ -212,6 +235,13 @@ def _predict(workspace, name, repo, python, timeout, engine, provider, resume):
                 "attempts": previous.get(case["id"], {}).get("attempts", 0) + 1,
                 "failed_attempts": previous.get(case["id"], {}).get("failed_attempts", 0)
                 + int(status != "ok"),
+                "failure_kind": _classify_failure(log, result.timed_out)
+                if status != "ok"
+                else None,
+                "failure_kinds": _accumulate_failure_kinds(
+                    previous.get(case["id"], {}),
+                    _classify_failure(log, result.timed_out) if status != "ok" else None,
+                ),
                 "prediction_sha256": digest(target) if status == "ok" else None,
                 "metadata_sha256": digest(target.with_suffix(".metadata.json"))
                 if status == "ok" and target.with_suffix(".metadata.json").is_file()
@@ -234,3 +264,63 @@ def _predict(workspace, name, repo, python, timeout, engine, provider, resume):
             "Inferência incompleta; consulte inference.json e logs. Não será pontuada."
         )
     freeze_predictions(destination, plan, {"kind": "acessilia", "label": system["commit"]})
+
+
+def _classify_failure(log: Path, timed_out: bool) -> str:
+    """Classify failures by fixed signatures without persisting raw log text."""
+    if timed_out:
+        return "benchmark_timeout"
+    try:
+        content = log.read_text(encoding="utf-8", errors="replace").casefold()
+    except OSError:
+        return "process_failed"
+    if any(
+        marker in content
+        for marker in (
+            "toolboxtimeout",
+            "providertimeouterror",
+            "timeout do provedor",
+            "provider timeout",
+            "gateway deadline",
+        )
+    ):
+        return "provider_timeout"
+    if any(
+        marker in content
+        for marker in (
+            "toolboxunavailable",
+            "providerunavailableerror",
+            "provider unavailable",
+            "toolbox unavailable",
+            "provedor indisponível",
+            "provedor indisponivel",
+        )
+    ):
+        return "provider_unavailable"
+    return "process_failed"
+
+
+def _accumulate_failure_kinds(previous: dict, failure_kind: str | None) -> dict:
+    """Retain category counts across resumes and ignore unknown historical keys."""
+    allowed = {"benchmark_timeout", "provider_timeout", "provider_unavailable", "process_failed"}
+    previous_kinds = previous.get("failure_kinds")
+    legacy = not isinstance(previous_kinds, dict)
+    if legacy:
+        previous_kinds = {}
+    counts = {
+        kind: value
+        for kind, value in previous_kinds.items()
+        if kind in allowed and isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    }
+    legacy_failures = previous.get("failed_attempts", 0)
+    if legacy and isinstance(legacy_failures, int) and not isinstance(legacy_failures, bool):
+        legacy_failures = max(0, legacy_failures)
+        if previous.get("status") == "timeout":
+            if legacy_failures > 0:
+                counts["benchmark_timeout"] = 1
+                legacy_failures -= 1
+        if legacy_failures > 0:
+            counts["process_failed"] = legacy_failures
+    if failure_kind:
+        counts[failure_kind] = counts.get(failure_kind, 0) + 1
+    return counts

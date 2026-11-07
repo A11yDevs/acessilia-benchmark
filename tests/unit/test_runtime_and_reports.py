@@ -10,7 +10,12 @@ from acessilia_benchmark.adapters.acessilia import pack_images
 from acessilia_benchmark.core.scoring import compute_overall
 from acessilia_benchmark.io import read, write
 from acessilia_benchmark.processes import run_logged
-from acessilia_benchmark.reporting import normalize_numbers, processing_assessment, summarize
+from acessilia_benchmark.reporting import (
+    _failure_counts,
+    normalize_numbers,
+    processing_assessment,
+    summarize,
+)
 from acessilia_benchmark.services.doctor import interpreter_info, resolve_python
 from acessilia_benchmark.services.evaluation import (
     config_for,
@@ -122,13 +127,122 @@ def test_processing_diagnostics_are_reported_without_assuming_success(tmp_path):
     )
     write(tmp_path / "predictions/b.metadata.json", {"technical_warnings": None})
     result = processing_assessment(tmp_path, plan, "acessilia")
-    assert result["status"] == "reported_warnings"
+    assert result["status"] == "unknown"
+    assert result["cases"][0]["status"] == "reported_warnings"
     assert result["cases"][0]["signals"] == [
         "visual_failures",
         "extraction_degraded",
     ]
     assert result["cases"][1]["status"] == "unknown"
     assert processing_assessment(tmp_path, plan, "imported")["status"] == "not_available"
+
+
+def test_formula_pages_require_core_formula_diagnostics_to_claim_clean_processing(tmp_path):
+    plan = {
+        "fixture": False,
+        "cases": [
+            {
+                "id": "document-page-9-10",
+                "prediction": "document_page_9-10.md",
+                "images": ["/fixtures/page_9.jpg", "/fixtures/page_10.jpg"],
+            }
+        ],
+        "unique_pages": 1,
+        "dataset": "omnidocbench",
+        "dataset_revision": "revision",
+        "evaluator": {"commit": "commit"},
+    }
+    write(tmp_path / "prediction-manifest.json", {"origin": {"kind": "acessilia"}})
+    write(
+        tmp_path / "predictions/document_page_9-10.metadata.json",
+        {
+            "technical_warnings": [],
+            "processing_diagnostics": {"pddl_formula_diagnostics": None},
+        },
+    )
+    write(
+        tmp_path / "result/sample_display_formula_result.json",
+        [{"img_id": "book_document_page_9.png", "gt": "x^2", "pred": "x^2"}],
+    )
+    summarize(tmp_path, plan, tmp_path, {}, "basic")
+    processing = read(tmp_path / "summary.json")["processing"]
+    assert processing["status"] == "unknown"
+    assert processing["cases"][0]["status"] == "unknown"
+    assert processing["cases"][0]["signals"] == ["formula_diagnostics_unavailable"]
+
+
+def test_missing_formula_diagnostics_remain_unknown_even_with_warnings(tmp_path):
+    plan = {
+        "cases": [
+            {
+                "id": "page-9",
+                "prediction": "page_9.md",
+                "images": ["/fixtures/page_9.jpg"],
+            },
+            {"id": "page-10", "prediction": "page_10.md", "images": ["/fixtures/page_10.jpg"]},
+        ],
+    }
+    write(
+        tmp_path / "predictions/page_9.metadata.json",
+        {
+            "technical_warnings": ["falha visual reportada"],
+            "processing_diagnostics": {"pddl_formula_diagnostics": None},
+        },
+    )
+    write(
+        tmp_path / "predictions/page_10.metadata.json",
+        {"technical_warnings": ["aviso reportado"], "processing_diagnostics": {}},
+    )
+    result = processing_assessment(tmp_path, plan, "acessilia", formula_page_stems={"page_9"})
+    assert result["cases"][0]["status"] == "unknown"
+    assert result["cases"][1]["status"] == "reported_warnings"
+    assert result["status"] == "unknown"
+
+
+def test_runtime_failure_categories_count_all_attempts_and_read_legacy_rows():
+    assert _failure_counts(
+        [
+            {
+                "status": "ok",
+                "failure_kinds": {"provider_timeout": 1, "provider_unavailable": 2},
+            },
+            {"status": "timeout"},
+            {"status": "failed"},
+        ]
+    ) == {
+        "benchmark_timeout": 1,
+        "provider_timeout": 1,
+        "provider_unavailable": 2,
+        "process_failed": 1,
+    }
+
+
+def test_formula_fallbacks_and_provider_limits_are_review_signals(tmp_path):
+    plan = {
+        "cases": [{"id": "a", "prediction": "a.md", "images": ["/fixtures/a.jpg"]}],
+    }
+    write(
+        tmp_path / "predictions/a.metadata.json",
+        {
+            "technical_warnings": [],
+            "processing_diagnostics": {
+                "pddl_formula_diagnostics": {
+                    "attempted": 2,
+                    "recognized": 1,
+                    "vision_fallbacks": 1,
+                    "unrecognized": 1,
+                },
+                "pddl_external_provider_limits": {"vision": 1},
+            },
+        },
+    )
+    result = processing_assessment(tmp_path, plan, "acessilia")
+    assert result["status"] == "reported_warnings"
+    assert result["cases"][0]["signals"] == [
+        "formula_vision_fallback",
+        "formulas_unrecognized",
+        "external_provider_limits",
+    ]
 
 
 def test_quality_report_shows_warnings_and_their_limit(tmp_path):

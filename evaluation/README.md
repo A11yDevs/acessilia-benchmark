@@ -10,9 +10,12 @@ um caso precisa de revisão, mas não significa automaticamente uma falha;
 `unknown` ou `not_available` significam evidência
 insuficiente, por exemplo em previsões importadas ou metadados antigos. A
 ausência de avisos não garante execução sem degradação: o Core pode não propagar
-falhas de enriquecimento matemático. As métricas avaliam o Markdown produzido,
-mesmo quando há avisos. Na comparação, `processing_review` sinaliza a revisão
-independentemente da regressão de qualidade.
+falhas de enriquecimento matemático. Em páginas com fórmula, a falta de
+`pddl_formula_diagnostics` mantém o processamento como `unknown`, mesmo com uma
+lista de avisos vazia. As métricas avaliam o Markdown produzido. Na comparação,
+`processing_review` sinaliza a revisão independentemente da regressão de qualidade.
+Use `compare --fail-on-processing-review` para fazer um gate retornar falha
+quando a evidência de processamento for insuficiente.
 
 ## Preparar os avaliadores e conferir o ambiente
 
@@ -26,11 +29,14 @@ uv run acessilia-benchmark doctor --acessilia-repo ../acessilia
 3.11.17. A instalação inicial requer internet. O lock gerado é local e
 preservado para manter o ambiente entre execuções.
 
-`doctor` confere manifests, avaliadores, módulos do Core e a API Toolbox; não
-chama provedores nem testa uma inferência. Por padrão, consulta
-`TOOLBOX_BASE_URL` ou `http://127.0.0.1:8002`. `--toolbox-url` muda apenas a URL
-do diagnóstico, não a configuração usada pelo Core. Para selecionar outro
-Python, passe `--python` a `doctor` e `predict`.
+`doctor` confere manifests, avaliadores, módulos/configuração do Core, saúde da
+API Toolbox e dos providers selecionados no Core em todos os endpoints de
+failover. Não executa uma inferência. Sem repositório Core, consulta
+`TOOLBOX_BASE_URL` ou `http://127.0.0.1:8002`, sem verificar providers.
+`--toolbox-url` substitui os endpoints apenas para o diagnóstico; `predict`
+continua usando a configuração do Core. A chave da API é usada em memória para
+as consultas autenticadas e não é gravada. Para selecionar outro Python, passe
+`--python` a `doctor` e `predict`.
 
 O perfil `basic` roda offline depois do download e do setup. O perfil `full`
 também precisa das ferramentas de renderização descritas abaixo.
@@ -78,7 +84,10 @@ requisições contêm identificador e imagens, sem referências.
 
 O Core executa com diretórios isolados em `runs/<rodada>/runtime/` para dados,
 logs e temporários. O adaptador desativa dry-run e recusa estados inválidos. O
-commit do Core, dependências e configuração não secreta são registrados.
+commit do Core, dependências, configuração não secreta e identidade reportada
+pela API/providers Toolbox são registrados. `predict` recusa iniciar se algum
+provider configurado não estiver saudável. A pré-verificação não garante sucesso
+de uma chamada real ao modelo.
 `--timeout` define o limite em segundos por caso; o processo local é encerrado
 em timeout, mas uma requisição já enviada pode continuar no servidor. Rodadas
 incompletas não são pontuadas. Modelos, serviços externos e caches precisam ser
@@ -107,13 +116,18 @@ diretamente para `predictions/` não os registra para avaliação.
 | --- | --- | --- |
 | `basic` oficial | Texto, fórmulas, tabelas e ordem; TEDS de tabelas | Python dos avaliadores |
 | `full` | `basic`, CDM de fórmulas e Overall local quando disponível | Ferramentas de renderização |
-| `runtime` | Cobertura, duração, p50/p95, sucesso, falhas, timeouts e vazão | Evidências de inferência; sem referências |
+| `runtime` | Cobertura, duração, p50/p95, sucesso, falhas por categoria e vazão | Evidências de inferência; sem referências |
 
 `evaluate --profile auto` usa o perfil correspondente ao dataset. Também é
 possível avaliar as mesmas previsões com `basic` e `full`; cada perfil tem seu
 próprio diretório e resultados existentes não são sobrescritos. `runtime` usa
 medições seladas da inferência, não calcula qualidade ou Overall e não produz
 métricas de tempo para previsões importadas sem evidências.
+`failures_by_kind` classifica todas as tentativas por assinaturas conhecidas nos
+logs e separa timeout do benchmark, timeout do provider, provider indisponível e
+falha não classificada. O relatório não inclui texto bruto dos logs. Evidências
+anteriores à classificação são contadas conservadoramente como falhas não
+classificadas, exceto o timeout final de processo que já era identificado.
 
 ### Perfil `full`
 

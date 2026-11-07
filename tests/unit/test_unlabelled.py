@@ -11,6 +11,7 @@ from acessilia_benchmark.io import read
 from acessilia_benchmark.processes import ProcessResult
 from acessilia_benchmark.services import inference
 from acessilia_benchmark.services.evaluation import evaluate
+from acessilia_benchmark.services.toolbox import ToolboxSettings
 
 
 def test_unlabelled_windows_require_no_references(workspace, dataset_factory):
@@ -45,6 +46,16 @@ def test_runtime_report_includes_unsuccessful_attempts(
     dataset_factory("drdocbench-test")
     destination, plan = prepare(workspace, "drdocbench-test", "test", workspace.data, 0, 42)
     monkeypatch.setattr(inference, "resolve_python", lambda *args: (tmp_path / "python", {}))
+    monkeypatch.setattr(
+        inference,
+        "read_toolbox_settings",
+        lambda *_: ToolboxSettings(("http://toolbox.test",), ("docling",), "ollama", "private-key"),
+    )
+    monkeypatch.setattr(
+        inference,
+        "check_toolbox",
+        lambda *_: {"ok": True, "providers": {"docling": {"ok": True}}, "identity": {}},
+    )
     monkeypatch.setattr(inference, "git", lambda *args: "commit")
     statuses = iter(["ok", "timeout", "failed"] if failure else ["ok"] * 3)
 

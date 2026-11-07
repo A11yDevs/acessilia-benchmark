@@ -12,6 +12,7 @@ from acessilia_benchmark.io import digest, read, seal, write
 from acessilia_benchmark.processes import ProcessResult
 from acessilia_benchmark.services import comparison, inference
 from acessilia_benchmark.services.submission import submit
+from acessilia_benchmark.services.toolbox import ToolboxSettings
 
 
 def imported(workspace, name, dataset="omnidocbench", limit=0, window_size=1):
@@ -103,6 +104,33 @@ def test_comparison_cli_returns_failure_for_regression(workspace, dataset_factor
     assert result.value.code == 1
 
 
+def test_comparison_cli_can_fail_when_processing_needs_review(
+    workspace, dataset_factory, monkeypatch
+):
+    from acessilia_benchmark import cli
+
+    dataset_factory()
+    evaluated(workspace, "base")
+    evaluated(workspace, "candidate")
+    monkeypatch.setattr(cli.Workspace, "discover", lambda: workspace)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bench",
+            "compare",
+            "base",
+            "candidate",
+            "--profile",
+            "basic",
+            "--fail-on-processing-review",
+        ],
+    )
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 1
+
+
 def test_single_page_submission_includes_isolated_pages_and_exact_format(
     workspace, dataset_factory
 ):
@@ -132,6 +160,16 @@ def test_submission_rejects_samples_and_multipage_windows(workspace, dataset_fac
 def partial(workspace, dataset_factory, monkeypatch):
     dataset_factory()
     destination, plan = prepare(workspace, "omnidocbench", "recover", workspace.data, 2, 42)
+    monkeypatch.setattr(
+        inference,
+        "read_toolbox_settings",
+        lambda *_: ToolboxSettings(("http://toolbox.test",), ("docling",), "ollama", "private-key"),
+    )
+    monkeypatch.setattr(
+        inference,
+        "check_toolbox",
+        lambda *_: {"ok": True, "providers": {"docling": {"ok": True}}, "identity": {}},
+    )
     monkeypatch.setattr(inference, "resolve_python", lambda *a: (Path(sys.executable), {}))
     monkeypatch.setattr(inference, "git", lambda *a: "commit" if "rev-parse" in a else "")
     calls = []

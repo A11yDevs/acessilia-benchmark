@@ -82,6 +82,11 @@ def main():
     sub.add_argument("--tolerance", type=float, default=0, help="Tolerância em pontos de 0–100.")
     sub.add_argument("--output", type=Path)
     sub.add_argument("--fail-on-regression", action="store_true")
+    sub.add_argument(
+        "--fail-on-processing-review",
+        action="store_true",
+        help="Retornar código 1 se o processamento exigir revisão manual.",
+    )
     sub = commands.add_parser("evaluate")
     sub.add_argument("--run", required=True)
     sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
@@ -90,7 +95,8 @@ def main():
     sub.add_argument("--acessilia-repo", type=Path)
     sub.add_argument("--python", type=Path)
     sub.add_argument(
-        "--toolbox-url", default=os.environ.get("TOOLBOX_BASE_URL", "http://127.0.0.1:8002")
+        "--toolbox-url",
+        help="Sobrescrever a URL Toolbox do Core (ou TOOLBOX_BASE_URL sem --acessilia-repo).",
     )
     sub.add_argument("--output", type=Path)
     sub = commands.add_parser("import-predictions")
@@ -128,6 +134,8 @@ def main():
             )
             print(json.dumps(result, indent=2, ensure_ascii=False))
             if args.fail_on_regression and result["quality_regressions"]:
+                parser.exit(1)
+            if args.fail_on_processing_review and result["processing_review"]:
                 parser.exit(1)
         elif args.action == "doctor":
             result = diagnose(workspace, args.acessilia_repo, args.python, args.toolbox_url)

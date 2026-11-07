@@ -10,7 +10,7 @@ from .core.scoring import overall_details
 from .io import digest, local_path, read, write
 
 
-def processing_assessment(destination, plan, origin, rows=None):
+def processing_assessment(destination, plan, origin, rows=None, formula_page_stems=()):
     """Surface reported diagnostics without treating absent warnings as proof of success."""
     if origin != "acessilia":
         return {"status": "not_available", "cases": [], "origin": origin}
@@ -37,9 +37,34 @@ def processing_assessment(destination, plan, origin, rows=None):
         )
         diagnostics = metadata.get("processing_diagnostics")
         signals = []
+        case_stems = {
+            Path(case["prediction"]).stem,
+            Path(str(case["id"])).stem,
+            *(Path(image).stem for image in case.get("images", [])),
+        }
+        formula_diagnostics_missing = any(
+            _same_page_stem(case_stem, formula_stem)
+            for case_stem in case_stems
+            for formula_stem in formula_page_stems
+        ) and (
+            not isinstance(diagnostics, dict) or diagnostics.get("pddl_formula_diagnostics") is None
+        )
+        if formula_diagnostics_missing:
+            signals.append("formula_diagnostics_unavailable")
         if isinstance(diagnostics, dict):
             if diagnostics.get("pddl_unsatisfied_obligations"):
                 signals.append("unsatisfied_obligations")
+            formula = diagnostics.get("pddl_formula_diagnostics")
+            if isinstance(formula, dict):
+                if _positive_count(formula.get("vision_fallbacks")):
+                    signals.append("formula_vision_fallback")
+                if _positive_count(formula.get("unrecognized")):
+                    signals.append("formulas_unrecognized")
+            limits = diagnostics.get("pddl_external_provider_limits")
+            if isinstance(limits, dict) and any(
+                _positive_count(value) for value in limits.values()
+            ):
+                signals.append("external_provider_limits")
             visual = diagnostics.get("pddl_visual_failures")
             if isinstance(visual, dict) and any(
                 isinstance(counts, dict) and any(counts.values()) for counts in visual.values()
@@ -57,8 +82,11 @@ def processing_assessment(destination, plan, origin, rows=None):
             {
                 "id": case["id"],
                 "status": (
-                    "reported_warnings"
-                    if (valid_warnings and warnings) or signals
+                    "unknown"
+                    if formula_diagnostics_missing
+                    else "reported_warnings"
+                    if (valid_warnings and warnings)
+                    or any(signal != "formula_diagnostics_unavailable" for signal in signals)
                     else "no_reported_warnings"
                     if valid_warnings
                     else "unknown"
@@ -69,10 +97,10 @@ def processing_assessment(destination, plan, origin, rows=None):
             }
         )
     status = (
-        "reported_warnings"
-        if any(c["status"] == "reported_warnings" for c in cases)
-        else "unknown"
+        "unknown"
         if len(cases) != len(plan["cases"]) or any(c["status"] == "unknown" for c in cases)
+        else "reported_warnings"
+        if any(c["status"] == "reported_warnings" for c in cases)
         else "no_reported_warnings"
     )
     return {"status": status, "cases": cases, "origin": origin}
@@ -95,7 +123,12 @@ def summarize(destination, plan, artifacts, metrics, profile):
             for name in ("text_block", "table", "display_formula", "reading_order")
         },
     }
-    summary["processing"] = processing_assessment(destination, plan, origin["kind"])
+    summary["processing"] = processing_assessment(
+        destination,
+        plan,
+        origin["kind"],
+        formula_page_stems=_formula_page_stems(artifacts),
+    )
     summary["evaluator_diagnostics"] = {
         name: value for name, value in metrics.items() if name not in summary["metrics"]
     }
@@ -117,6 +150,7 @@ def summarize(destination, plan, artifacts, metrics, profile):
             "processed_pages_per_minute": sum(t["pages"] for t in timings) * 60 / total
             if total > 0
             else None,
+            "failures_by_kind": _failure_counts(timings),
         }
     worst = []
     observed = set()
@@ -191,7 +225,9 @@ def summarize(destination, plan, artifacts, metrics, profile):
         "",
         "Avisos são sinais para revisão, não uma classificação automática de falha. "
         "Ausência de avisos não comprova processamento completo: o Core pode não "
-        "propagar todas as falhas. As métricas medem o arquivo produzido.",
+        "propagar todas as falhas. Em páginas com fórmula, a ausência de "
+        "pddl_formula_diagnostics mantém o processamento como unknown. As métricas "
+        "medem o arquivo produzido.",
         "",
         "```json",
         json.dumps(summary["processing"], indent=2, ensure_ascii=False),
@@ -314,7 +350,13 @@ def summarize_runtime(destination, plan):
         else None,
         "plan_sha256": digest(destination / "plan.json"),
         "inference_sha256": digest(evidence_path),
-        "processing": processing_assessment(destination, plan, "acessilia", rows),
+        "processing": processing_assessment(
+            destination,
+            plan,
+            "acessilia",
+            rows,
+            _formula_page_stems(destination / "full"),
+        ),
         "coverage": {
             "planned_cases": len(expected),
             "attempted_cases": len(rows),
@@ -337,6 +379,7 @@ def summarize_runtime(destination, plan):
             "attempted_pages": attempted_pages,
             "successful_page_occurrences": successful_pages,
             "successful_pages_per_minute": successful_pages * 60 / total if total else None,
+            "failures_by_kind": _failure_counts(rows),
         },
     }
     artifacts = destination / "runtime-report"
@@ -346,10 +389,13 @@ def summarize_runtime(destination, plan):
         f"Dataset: {plan['dataset']} @ {plan['dataset_revision']}\n\n"
         "Sem métricas de qualidade ou Overall neste perfil.\n\n"
         "Diagnósticos de processamento estão incluídos abaixo; ausência de avisos "
-        "não comprova processamento completo.\n\n"
+        "não comprova processamento completo. Fórmulas sem diagnóstico do Core "
+        "permanecem unknown.\n\n"
         "Tempos incluem startup do processo, preparação da entrada, cache e serviços; "
         "não medem apenas o modelo nem GPU-hora. Tempos e percentis acumulam todas "
         "as tentativas por caso, incluindo falhas, timeouts e retomadas. "
+        "`failures_by_kind` classifica falhas por assinaturas conhecidas nos logs, sem expor o texto bruto; "
+        "assinaturas não reconhecidas ficam como `process_failed`. "
         "Páginas na vazão contam ocorrências nas janelas; janelas vizinhas podem "
         "compartilhar páginas. Falhas consomem tempo, mas não contam na vazão de sucesso.\n\n"
         + "```json\n"
@@ -358,3 +404,61 @@ def summarize_runtime(destination, plan):
         encoding="utf-8",
     )
     seal(artifacts / "summary.json")
+
+
+def _formula_page_stems(artifacts):
+    """Return page IDs with formula references in the official evaluator output."""
+    files = list((artifacts / "result").glob("*_display_formula_result.json"))
+    if len(files) != 1:
+        return set()
+    records = read(files[0])
+    if not isinstance(records, list):
+        return set()
+    return {
+        Path(str(row.get("img_id", ""))).stem
+        for row in records
+        if isinstance(row, dict) and str(row.get("gt", "")).strip()
+    }
+
+
+def _same_page_stem(case_stem, formula_stem):
+    """Match evaluator page IDs to image stems even when a document prefix differs."""
+    if not case_stem or not formula_stem:
+        return False
+    if case_stem == formula_stem:
+        return True
+    return any(
+        longer.endswith(separator + shorter)
+        for longer, shorter in ((case_stem, formula_stem), (formula_stem, case_stem))
+        for separator in ("_", "-", "/")
+    )
+
+
+def _positive_count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _failure_counts(rows):
+    """Aggregate failed attempts, with conservative compatibility for older rows."""
+    counts = {
+        "benchmark_timeout": 0,
+        "provider_timeout": 0,
+        "provider_unavailable": 0,
+        "process_failed": 0,
+    }
+    for row in rows:
+        kinds = row.get("failure_kinds")
+        if isinstance(kinds, dict):
+            for kind, count in kinds.items():
+                if kind in counts and isinstance(count, int) and not isinstance(count, bool):
+                    counts[kind] += max(0, count)
+            continue
+        # Older evidence only distinguished outer benchmark timeouts.
+        failed_attempts = row.get("failed_attempts", int(row.get("status") != "ok"))
+        if not isinstance(failed_attempts, int) or isinstance(failed_attempts, bool):
+            failed_attempts = int(row.get("status") != "ok")
+        if row.get("status") == "timeout" and failed_attempts > 0:
+            counts["benchmark_timeout"] += 1
+            failed_attempts -= 1
+        counts["process_failed"] += max(0, failed_attempts)
+    return counts

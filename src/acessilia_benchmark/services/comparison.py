@@ -112,6 +112,10 @@ def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=No
             "candidate": right.get("processing", {"status": "unknown"}),
         },
     }
+    result["processing_review"] = any(
+        item.get("status") in {"reported_warnings", "unknown", "not_available"}
+        for item in result["processing"].values()
+    )
     for key in (
         "total_seconds",
         "p50_seconds_per_window",
@@ -162,10 +166,6 @@ def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=No
             if gain is not None and gain < -tolerance:
                 result["quality_regressions"].append(key)
         result["verdict"] = "regressed" if result["quality_regressions"] else "no_regression"
-        result["processing_review"] = any(
-            item.get("status") in {"reported_warnings", "unknown", "not_available"}
-            for item in result["processing"].values()
-        )
         result["scope"] = "Mesma amostra local; não é aceite tune/holdout nem ranking oficial."
     else:
         result["verdict"] = "runtime_only"

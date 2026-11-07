@@ -34,7 +34,9 @@ referências, avaliador, ambiente de avaliação ou cobertura. Calcula deltas co
 a direção correta: edit distance menor é melhor; TEDS, CDM e Overall maiores
 são melhores. `--tolerance 0.5` permite uma perda de até meio ponto na escala
 0–100. `--fail-on-regression` retorna código 1 quando encontra regressão de
-qualidade. Métricas ausentes não viram zero.
+qualidade. `--fail-on-processing-review` retorna código 1 quando qualquer lado
+tem avisos ou evidência insuficiente, permitindo bloquear gates sem diagnóstico
+confiável. Métricas ausentes não viram zero.
 
 O resultado se aplica à amostra escolhida; não é um aceite tune/holdout nem
 comprova generalização. Reserve documentos independentes para validação. O
@@ -59,7 +61,10 @@ uma interrupção durante a gravação pode exigir inspeção. Rodadas antigas s
 hashes por caso não podem ser retomadas com segurança.
 
 O relatório runtime inclui chamadas, falhas, estado final e tempo acumulado por
-caso. A comparação de custo funciona mesmo sem referências:
+caso. `failures_by_kind` acumula todas as tentativas e separa timeout do processo
+benchmark, timeout do provider, provider indisponível e falha não classificada.
+Essa classificação usa assinaturas conhecidas nos logs; o texto bruto do log não
+é copiado para os relatórios. A comparação de custo funciona mesmo sem referências:
 
 ```bash
 uv run acessilia-benchmark compare baseline-test candidate-test --profile runtime

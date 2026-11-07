@@ -120,6 +120,18 @@ def test_real_orchestration_generates_sealed_runtime_report(
     dataset_factory()
     monkeypatch.setattr(pipeline, "resolve_python", lambda *args: (tmp_path / "python", {}))
     monkeypatch.setattr(inference, "resolve_python", lambda *args: (tmp_path / "python", {}))
+    from acessilia_benchmark.services.toolbox import ToolboxSettings
+
+    monkeypatch.setattr(
+        inference,
+        "read_toolbox_settings",
+        lambda *_: ToolboxSettings(("http://toolbox.test",), ("docling",), "ollama", "private-key"),
+    )
+    monkeypatch.setattr(
+        inference,
+        "check_toolbox",
+        lambda *_: {"ok": True, "providers": {"docling": {"ok": True}}, "identity": {}},
+    )
     monkeypatch.setattr(inference, "git", lambda *args: "commit" if "rev-parse" in args else "")
 
     def generate(command, log, **kwargs):
