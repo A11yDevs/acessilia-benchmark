@@ -1,15 +1,15 @@
 """Read-only checks of interpreters, evaluator checkouts and the Toolbox API."""
 
 import json
+import os
 import shutil
 import subprocess
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from ..core.catalog import load_registry
 from ..core.workspace import Workspace
 from .runtime import evaluator
+from .toolbox import check_toolbox, read_toolbox_settings
 
 CORE_MODULES = ("agno", "fitz", "PIL", "fastapi", "docstruct", "acessilia_sdk")
 
@@ -26,6 +26,11 @@ for module, symbol in [('docstruct.export.markdown', 'document_to_markdown'),
         contracts[module + ':' + symbol] = callable(getattr(importlib.import_module(module), symbol))
     except Exception:
         contracts[module + ':' + symbol] = False
+try:
+    contracts['backend.config.settings:settings'] = hasattr(
+        importlib.import_module('backend.config.settings'), 'settings')
+except Exception:
+    contracts['backend.config.settings:settings'] = False
 print(json.dumps({'python': sys.version, 'prefix': sys.prefix, 'contracts': contracts,
                   'modules': {name: importlib.util.find_spec(name) is not None for name in names}}))
 """
@@ -67,22 +72,8 @@ def resolve_python(repo: Path, explicit: Path | None = None) -> tuple[Path, dict
     raise ValueError("Ambiente do Acessilia indisponível. Informe --python. " + "; ".join(errors))
 
 
-def check_toolbox(url: str) -> dict:
-    health_url = url.rstrip("/") + "/v1/health"
-    try:
-        with urllib.request.urlopen(health_url, timeout=5) as response:
-            data = json.load(response)
-        return {
-            "ok": data.get("status") in {"healthy", "ok"},
-            "health": data,
-            "scope": "API health; provider execution is checked by inference",
-        }
-    except (OSError, ValueError, urllib.error.URLError) as error:
-        return {"ok": False, "error": str(error)}
-
-
 def diagnose(
-    workspace: Workspace, repo: Path | None, python: Path | None, toolbox_url: str
+    workspace: Workspace, repo: Path | None, python: Path | None, toolbox_url: str | None
 ) -> dict:
     result = {
         "workspace": str(workspace.root),
@@ -90,7 +81,7 @@ def diagnose(
         "datasets": {},
         "evaluators": {},
         "core": None,
-        "toolbox": check_toolbox(toolbox_url),
+        "toolbox": None,
     }
     for name, spec in load_registry(workspace).items():
         result["datasets"][name] = {
@@ -109,10 +100,30 @@ def diagnose(
             result["evaluators"][name] = {"ok": False, "error": str(error)}
     if repo is not None:
         try:
-            selected, info = resolve_python(repo.expanduser().resolve(), python)
+            resolved_repo = repo.expanduser().resolve()
+            selected, info = resolve_python(resolved_repo, python)
             result["core"] = {"ok": True, "interpreter": str(selected), **info}
+            config = read_toolbox_settings(selected, resolved_repo)
+            endpoints = [toolbox_url] if toolbox_url else list(config.endpoints)
+            providers = config.providers
+            api_key = config.api_key
+            pinned_providers = (
+                tuple((provider, endpoints[0]) for provider, _ in config.pinned_providers)
+                if toolbox_url
+                else config.pinned_providers
+            )
         except ValueError as error:
             result["core"] = {"ok": False, "error": str(error)}
+            endpoints = [toolbox_url or os.environ.get("TOOLBOX_BASE_URL", "http://127.0.0.1:8002")]
+            providers = ()
+            api_key = ""
+            pinned_providers = ()
+    else:
+        endpoints = [toolbox_url or os.environ.get("TOOLBOX_BASE_URL", "http://127.0.0.1:8002")]
+        providers = ()
+        api_key = ""
+        pinned_providers = ()
+    result["toolbox"] = check_toolbox(endpoints, providers, api_key, pinned_providers)
     result["ready_for_evaluation"] = result["evaluation_python"] and all(
         v["ok"] for v in result["evaluators"].values()
     )
