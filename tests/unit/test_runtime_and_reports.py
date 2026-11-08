@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 from pathlib import Path
@@ -7,15 +8,18 @@ import pytest
 from PIL import Image
 
 from acessilia_benchmark.adapters.acessilia import pack_images
+from acessilia_benchmark.core.runs import prepare
 from acessilia_benchmark.core.scoring import compute_overall
-from acessilia_benchmark.io import read, write
+from acessilia_benchmark.io import digest, read, seal, write
 from acessilia_benchmark.processes import run_logged
 from acessilia_benchmark.reporting import (
     _failure_counts,
     normalize_numbers,
     processing_assessment,
     summarize,
+    summarize_runtime,
 )
+from acessilia_benchmark.services.comparison import compare
 from acessilia_benchmark.services.doctor import interpreter_info, resolve_python
 from acessilia_benchmark.services.evaluation import (
     config_for,
@@ -215,6 +219,93 @@ def test_runtime_failure_categories_count_all_attempts_and_read_legacy_rows():
         "provider_unavailable": 2,
         "process_failed": 1,
     }
+
+
+@pytest.mark.parametrize("dataset", ["omnidocbench", "drdocbench-dev", "drdocbench-test"])
+@pytest.mark.parametrize("diagnostics", [None, {"attempted": 1, "recognized": 1}])
+def test_runtime_formula_review_before_evaluation(
+    workspace, dataset_factory, dataset, diagnostics, monkeypatch
+):
+    from acessilia_benchmark import cli
+
+    dataset_factory(dataset)
+    destination, plan = prepare(workspace, dataset, "runtime", workspace.data, 0, 42)
+    if dataset == "drdocbench-dev":
+        reference = Path(plan["cases"][0]["references"][-1])
+        pages = read(reference)
+        pages[0]["layout_dets"].append({"category_type": "equation_isolated", "latex": "x^2"})
+        write(reference, pages)
+        plan["reference_sha256"][str(reference)] = digest(reference)
+        write(destination / "plan.json", plan)
+        seal(destination / "plan.json")
+    rows = []
+    for case in plan["cases"]:
+        metadata = (
+            destination / "predictions" / Path(case["prediction"]).with_suffix(".metadata.json")
+        )
+        write(
+            metadata,
+            {
+                "technical_warnings": [],
+                "processing_diagnostics": {"pddl_formula_diagnostics": diagnostics},
+            },
+        )
+        rows.append(
+            {
+                "id": case["id"],
+                "status": "ok",
+                "pages": len(case["images"]),
+                "seconds": 1,
+                "metadata_sha256": digest(metadata),
+            }
+        )
+    write(destination / "system.json", {})
+    write(
+        destination / "inference.json",
+        {
+            "status": "ok",
+            "plan_sha256": digest(destination / "plan.json"),
+            "system_sha256": digest(destination / "system.json"),
+            "cases": rows,
+        },
+    )
+    seal(destination / "inference.json")
+    (destination / "timings.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    summarize_runtime(destination, plan)
+    assert not (destination / "full").exists()
+    result = compare(workspace, "runtime", "runtime", "runtime")
+    assert result["processing_review"] is (diagnostics is None)
+    cases = read(destination / "runtime-report/summary.json")["processing"]["cases"]
+    if diagnostics is None:
+        assert any(case["status"] == "unknown" for case in cases)
+        if dataset == "omnidocbench":
+            assert sum(case["status"] == "no_reported_warnings" for case in cases) == 2
+        if dataset == "drdocbench-test":
+            assert all(case["status"] == "unknown" for case in cases)
+    monkeypatch.setattr(cli.Workspace, "discover", lambda: workspace)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark",
+            "compare",
+            "runtime",
+            "runtime",
+            "--profile",
+            "runtime",
+            "--fail-on-processing-review",
+        ],
+    )
+    if diagnostics is None:
+        with pytest.raises(SystemExit) as error:
+            cli.main()
+        assert error.value.code == 1
+    else:
+        cli.main()
+    before = read(destination / "runtime-report/summary.json")["processing"]
+    write(destination / "full/result/unused_display_formula_result.json", [])
+    summarize_runtime(destination, plan)
+    assert read(destination / "runtime-report/summary.json")["processing"] == before
 
 
 def test_formula_fallbacks_and_provider_limits_are_review_signals(tmp_path):

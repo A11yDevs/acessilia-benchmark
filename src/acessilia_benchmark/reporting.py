@@ -10,7 +10,9 @@ from .core.scoring import overall_details
 from .io import digest, local_path, read, write
 
 
-def processing_assessment(destination, plan, origin, rows=None, formula_page_stems=()):
+def processing_assessment(
+    destination, plan, origin, rows=None, formula_page_stems=(), formula_diagnostic_cases=()
+):
     """Surface reported diagnostics without treating absent warnings as proof of success."""
     if origin != "acessilia":
         return {"status": "not_available", "cases": [], "origin": origin}
@@ -42,10 +44,13 @@ def processing_assessment(destination, plan, origin, rows=None, formula_page_ste
             Path(str(case["id"])).stem,
             *(Path(image).stem for image in case.get("images", [])),
         }
-        formula_diagnostics_missing = any(
-            _same_page_stem(case_stem, formula_stem)
-            for case_stem in case_stems
-            for formula_stem in formula_page_stems
+        formula_diagnostics_missing = (
+            case["id"] in formula_diagnostic_cases
+            or any(
+                _same_page_stem(case_stem, formula_stem)
+                for case_stem in case_stems
+                for formula_stem in formula_page_stems
+            )
         ) and (
             not isinstance(diagnostics, dict) or diagnostics.get("pddl_formula_diagnostics") is None
         )
@@ -355,7 +360,7 @@ def summarize_runtime(destination, plan):
             plan,
             "acessilia",
             rows,
-            _formula_page_stems(destination / "full"),
+            formula_diagnostic_cases=_runtime_formula_cases(destination, plan),
         ),
         "coverage": {
             "planned_cases": len(expected),
@@ -390,7 +395,8 @@ def summarize_runtime(destination, plan):
         "Sem métricas de qualidade ou Overall neste perfil.\n\n"
         "Diagnósticos de processamento estão incluídos abaixo; ausência de avisos "
         "não comprova processamento completo. Fórmulas sem diagnóstico do Core "
-        "permanecem unknown.\n\n"
+        "permanecem unknown. Sem referências para identificar fórmulas, a ausência "
+        "desse diagnóstico também mantém o estado unknown.\n\n"
         "Tempos incluem startup do processo, preparação da entrada, cache e serviços; "
         "não medem apenas o modelo nem GPU-hora. Tempos e percentis acumulam todas "
         "as tentativas por caso, incluindo falhas, timeouts e retomadas. "
@@ -404,6 +410,51 @@ def summarize_runtime(destination, plan):
         encoding="utf-8",
     )
     seal(artifacts / "summary.json")
+
+
+def _runtime_formula_cases(destination, plan):
+    """Require diagnostics for formula or unlabelled cases, before evaluation exists."""
+    references = plan.get("reference_sha256", {})
+
+    def pages(path):
+        expected = references.get(str(path))
+        if expected is None:
+            return None
+        if digest(path) != expected:
+            raise ValueError(f"Referência alterada: {path}")
+        data = read(path)
+        return data if isinstance(data, list) else None
+
+    omni_pages = (
+        pages(destination / "ground-truth.json") if plan["dataset"] == "omnidocbench" else None
+    )
+    by_image = {
+        Path(page.get("page_info", {}).get("image_path", "")).name: page
+        for page in omni_pages or []
+        if isinstance(page, dict)
+    }
+    required = set()
+    for case in plan["cases"]:
+        if plan["dataset"] == "omnidocbench":
+            groups = [[by_image.get(Path(image).name)] for image in case["images"]]
+        else:
+            groups = [pages(Path(path)) for path in case.get("references", [])]
+        if (
+            len(groups) != len(case["images"])
+            or not groups
+            or any(group is None for group in groups)
+        ):
+            required.add(case["id"])
+            continue
+        for page in (page for group in groups for page in group):
+            blocks = page.get("layout_dets") if isinstance(page, dict) else None
+            if not isinstance(blocks, list) or any(
+                not isinstance(block, dict) or block.get("category_type") == "equation_isolated"
+                for block in blocks
+            ):
+                required.add(case["id"])
+                break
+    return required
 
 
 def _formula_page_stems(artifacts):
