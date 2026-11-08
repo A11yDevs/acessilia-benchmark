@@ -289,6 +289,7 @@ def _classify_failure(log: Path, timed_out: bool) -> str:
         marker in content
         for marker in (
             "toolboxunavailable",
+            "toolboxproviderunavailable",
             "providerunavailableerror",
             "provider unavailable",
             "toolbox unavailable",

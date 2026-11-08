@@ -88,15 +88,25 @@ def test_inference_records_evidence_and_blocks_partial_results(
     assert read(destination / "inference.json")["status"] == ("ok" if status == "ok" else "failed")
 
 
+@pytest.mark.parametrize(
+    "error,kind",
+    [
+        ("ToolboxTimeout: gateway deadline", "provider_timeout"),
+        (
+            "acessilia_sdk.toolbox.errors.ToolboxProviderUnavailable: HTTP 503",
+            "provider_unavailable",
+        ),
+    ],
+)
 def test_resume_preserves_provider_failures_after_eventual_success(
-    workspace, dataset_factory, monkeypatch, tmp_path
+    workspace, dataset_factory, monkeypatch, tmp_path, error, kind
 ):
     dataset_factory()
     destination, plan = prepare(workspace, "omnidocbench", "retry", workspace.data, 1, 42)
     _mock_toolbox(monkeypatch)
     monkeypatch.setattr(inference, "resolve_python", lambda *args: (tmp_path / "python", {}))
     monkeypatch.setattr(inference, "git", lambda *args: "commit" if "rev-parse" in args else "")
-    calls = iter(("ToolboxTimeout: gateway deadline", None))
+    calls = iter((error, None))
 
     def run(command, log, *, timeout, env):
         error = next(calls)
@@ -117,11 +127,11 @@ def test_resume_preserves_provider_failures_after_eventual_success(
     row = read(destination / "inference.json")["cases"][0]
     assert row["status"] == "ok"
     assert row["failure_kind"] is None
-    assert row["failure_kinds"] == {"provider_timeout": 1}
+    assert row["failure_kinds"] == {kind: 1}
     assert read(destination / "runtime-report/summary.json")["runtime"]["failures_by_kind"] == {
         "benchmark_timeout": 0,
-        "provider_timeout": 1,
-        "provider_unavailable": 0,
+        "provider_timeout": int(kind == "provider_timeout"),
+        "provider_unavailable": int(kind == "provider_unavailable"),
         "process_failed": 0,
     }
 
