@@ -30,9 +30,19 @@ Ele não importa CLI, serviços ou adaptadores. A CLI coordena os serviços. O
 adaptador usa o exportador Markdown compartilhado do Core.
 
 O engine `pipeline` chama `backend.service.process` e mede o fluxo completo. O
-engine `structure` chama o harness `scripts.bench` do Core para extrair e
-exportar a estrutura; não executa toda a orquestração do produto. O engine
-`structure` requer `--provider`.
+engine `structure` chama `ToolboxStructureClient`, configurado pela fábrica de
+clientes do Core, e usa `scripts.bench.core.payload_to_canonical` e o exportador
+Markdown compartilhado. Não executa toda a orquestração do produto e requer
+`--provider`.
+
+Na rota `structure`, `TOOLBOX_USE_REMOTE_CACHE=false` é encaminhado explicitamente
+ao SDK. Os metadados de cada previsão registram a política solicitada e a
+proveniência observada em `structure_execution`, incluindo `cache_hit`, versão
+do provider e duração informada pelo serviço. Uma resposta com `cache_hit=true`
+quando o cache foi desativado é recusada. Sem esse campo na resposta, o estado
+observado permanece desconhecido; a solicitação de desativação sozinha não prova
+execução sem cache. Isso controla o cache de execução da Toolbox; não limpa
+pesos de modelos ou outros caches internos do provider.
 
 ## Fluxo de uma rodada
 

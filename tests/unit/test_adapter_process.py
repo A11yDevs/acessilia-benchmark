@@ -11,13 +11,25 @@ from acessilia_benchmark.adapters import acessilia
 from acessilia_benchmark.io import read, write
 
 
-@pytest.mark.parametrize("engine", ["pipeline", "structure"])
-def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
+@pytest.mark.parametrize(
+    "engine,use_cache,cache_hit,fail",
+    [
+        ("pipeline", True, None, None),
+        ("structure", True, True, None),
+        ("structure", False, False, None),
+        ("structure", False, None, None),
+        ("structure", False, True, "no_cache"),
+        ("structure", False, False, "sdk failure"),
+    ],
+)
+def test_adapter_executes_directly_in_isolated_interpreter(
+    tmp_path, engine, use_cache, cache_hit, fail
+):
     repo = tmp_path / "core"
     files = {
         "backend/config/settings.py": (
             "from types import SimpleNamespace\n"
-            "settings = SimpleNamespace(pipeline_engine='legacy')\n"
+            f"settings = SimpleNamespace(pipeline_engine='legacy', toolbox_use_remote_cache={use_cache!r})\n"
         ),
         "backend/service.py": (
             "async def process(source, mode):\n"
@@ -37,9 +49,26 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
     if engine == "structure":
         files["backend/service.py"] = "raise AssertionError('full pipeline must not be imported')"
         files["scripts/bench/toolbox.py"] = (
-            "def extract_structure(source, provider):\n"
+            "raise AssertionError('Core helper bypasses cache policy')"
+        )
+        files["backend/tools/toolbox_client.py"] = (
+            "def make_toolbox_client(cls, provider):\n"
             "    assert provider == 'docling'\n"
-            "    return {'text': 'converted by Core'}\n"
+            "    return cls()\n"
+        )
+        files["libs/sdk/src/acessilia_sdk/toolbox/clients.py"] = (
+            "from pathlib import Path\n"
+            "class ToolboxStructureClient:\n"
+            "    async def extract_structure(self, *, file_path, use_remote_cache):\n"
+            f"        assert use_remote_cache is {use_cache!r}\n"
+            "        assert file_path.is_file()\n"
+            + (
+                "        raise RuntimeError('sdk failure')\n"
+                if fail == "sdk failure"
+                else f"        return {{'text': 'converted by Core', 'provenance': {{'provider': 'docling', 'cache_hit': {cache_hit!r}, 'private_key': 'never-report'}}}}\n"
+            )
+            + "    async def close(self):\n"
+            "        Path('client-closed').write_text('closed')\n"
         )
         files["scripts/bench/core.py"] = "def payload_to_canonical(payload):\n    return payload\n"
     for name, content in files.items():
@@ -51,7 +80,7 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
     request = tmp_path / "request.json"
     write(request, {"id": "page", "images": [str(image)]})
     output = tmp_path / "prediction.md"
-    subprocess.run(
+    result = subprocess.run(
         [
             sys.executable,
             "-I",
@@ -68,11 +97,19 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
             *(["--provider", "docling"] if engine == "structure" else []),
         ],
         cwd=tmp_path,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
         timeout=15,
     )
+    if engine == "structure":
+        assert (repo / "client-closed").read_text() == "closed"
+    if fail:
+        assert result.returncode != 0
+        assert fail in result.stderr
+        assert not output.exists()
+        return
+    assert result.returncode == 0, result.stderr
     assert output.read_text() == "converted by Core"
     metadata = read(output.with_suffix(".metadata.json"))
     assert metadata["mode"] == "normal"
@@ -97,6 +134,10 @@ def test_adapter_executes_directly_in_isolated_interpreter(tmp_path, engine):
         }
     else:
         assert metadata["technical_warnings"] is None
+        assert metadata["structure_execution"]["requested_use_remote_cache"] is use_cache
+        assert metadata["structure_execution"]["provenance"]["cache_hit"] is cache_hit
+        assert metadata["structure_execution"]["provenance"]["provider"] == "docling"
+        assert "never-report" not in output.with_suffix(".metadata.json").read_text()
 
 
 def test_render_tools_are_available_through_cli(workspace, monkeypatch):

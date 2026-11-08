@@ -35,6 +35,7 @@ def main():
     sys.path[:] = [path for path in sys.path if Path(path or ".").resolve() != adapter_directory]
     sys.path.insert(0, str(repo))
     sys.path.insert(0, str(repo / "libs/docstruct/src"))
+    sys.path.insert(0, str(repo / "libs/sdk/src"))
     os.chdir(repo)
     from backend.config.settings import settings
     from docstruct.export.markdown import document_to_markdown
@@ -46,6 +47,7 @@ def main():
     ):
         raise RuntimeError("Desative PDDL_EXECUTE_DRY_RUN para avaliar conversão real.")
     images = [Path(path) for path in request["images"]]
+    structure_execution = None
     with tempfile.TemporaryDirectory(prefix="acessilia-benchmark-") as temporary:
         source = images[0]
         if len(images) > 1:
@@ -53,9 +55,29 @@ def main():
             pack_images(images, source)
         if args.engine == "structure":
             from scripts.bench.core import payload_to_canonical
-            from scripts.bench.toolbox import extract_structure
 
-            canonical = payload_to_canonical(extract_structure(source, args.provider))
+            payload = asyncio.run(
+                extract_structure(source, args.provider, settings.toolbox_use_remote_cache)
+            )
+            provenance = payload.get("provenance") or {}
+            structure_execution = {
+                "requested_use_remote_cache": settings.toolbox_use_remote_cache,
+                "provenance": {
+                    key: provenance.get(key)
+                    for key in (
+                        "capability",
+                        "capability_version",
+                        "provider",
+                        "provider_version",
+                        "model_versions",
+                        "cache_hit",
+                        "duration_ms",
+                    )
+                },
+            }
+            if not settings.toolbox_use_remote_cache and provenance.get("cache_hit") is True:
+                raise RuntimeError("Provider retornou cache_hit=true apesar de no_cache.")
+            canonical = payload_to_canonical(payload)
         else:
             from backend.service import process
 
@@ -100,6 +122,7 @@ def main():
         "engine": args.engine,
         "provider": args.provider,
         "execution_status": status,
+        "structure_execution": structure_execution,
         "technical_warnings": canonical.get("technical_warnings"),
         "processing_diagnostics": {
             key: execution_metadata.get(key)
@@ -119,6 +142,18 @@ def main():
         "input_representation": "image" if len(images) == 1 else "lossless_raster_pdf_72dpi",
     }
     args.output.with_suffix(".metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+
+
+async def extract_structure(source: Path, provider: str, use_remote_cache: bool) -> dict:
+    """Use Core client configuration while explicitly forwarding the cache policy."""
+    from acessilia_sdk.toolbox.clients import ToolboxStructureClient
+    from backend.tools.toolbox_client import make_toolbox_client
+
+    client = make_toolbox_client(ToolboxStructureClient, provider=provider)
+    try:
+        return await client.extract_structure(file_path=source, use_remote_cache=use_remote_cache)
+    finally:
+        await client.close()
 
 
 def pack_images(images: list[Path], output: Path) -> None:

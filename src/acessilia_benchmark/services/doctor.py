@@ -16,16 +16,23 @@ CORE_MODULES = ("agno", "fitz", "PIL", "fastapi", "docstruct", "acessilia_sdk")
 
 def interpreter_info(python: Path, repo: Path) -> dict:
     program = """import importlib,importlib.util,json,sys
-sys.path[:0] = [sys.argv[1], sys.argv[1] + '/libs/docstruct/src']
+sys.path[:0] = [sys.argv[1], sys.argv[1] + '/libs/docstruct/src', sys.argv[1] + '/libs/sdk/src']
 names = ('agno', 'fitz', 'PIL', 'fastapi', 'docstruct', 'acessilia_sdk')
 contracts = {}
 for module, symbol in [('docstruct.export.markdown', 'document_to_markdown'),
                        ('scripts.bench.core', 'payload_to_canonical'),
-                       ('scripts.bench.toolbox', 'extract_structure')]:
+                       ('backend.tools.toolbox_client', 'make_toolbox_client')]:
     try:
         contracts[module + ':' + symbol] = callable(getattr(importlib.import_module(module), symbol))
     except Exception:
         contracts[module + ':' + symbol] = False
+try:
+    import inspect
+    from acessilia_sdk.toolbox.clients import ToolboxStructureClient
+    contracts['ToolboxStructureClient.extract_structure:use_remote_cache'] = (
+        'use_remote_cache' in inspect.signature(ToolboxStructureClient.extract_structure).parameters)
+except Exception:
+    contracts['ToolboxStructureClient.extract_structure:use_remote_cache'] = False
 try:
     contracts['backend.config.settings:settings'] = hasattr(
         importlib.import_module('backend.config.settings'), 'settings')
