@@ -64,7 +64,8 @@ O relatório runtime inclui chamadas, falhas, estado final e tempo acumulado por
 caso. `failures_by_kind` acumula todas as tentativas e separa timeout do processo
 benchmark, timeout do provider, provider indisponível e falha não classificada.
 Essa classificação usa assinaturas conhecidas nos logs; o texto bruto do log não
-é copiado para os relatórios. A comparação de custo funciona mesmo sem referências:
+é copiado para os relatórios, e `compare --profile runtime` mostra os deltas por
+categoria entre as rodadas. A comparação de custo funciona mesmo sem referências:
 
 ```bash
 uv run acessilia-benchmark compare baseline-test candidate-test --profile runtime

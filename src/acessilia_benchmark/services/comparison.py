@@ -132,6 +132,13 @@ def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=No
         after = (right.get("runtime") or {}).get(key)
         if before is not None and after is not None:
             result["runtime_deltas"][key] = after - before
+    base_failures = (left.get("runtime") or {}).get("failures_by_kind")
+    candidate_failures = (right.get("runtime") or {}).get("failures_by_kind")
+    if isinstance(base_failures, dict) and isinstance(candidate_failures, dict):
+        result["runtime_deltas"]["failures_by_kind"] = {
+            kind: candidate_failures.get(kind, 0) - base_failures.get(kind, 0)
+            for kind in sorted(base_failures.keys() | candidate_failures.keys())
+        }
     if profile != "runtime":
         if left["coverage"] != right["coverage"]:
             raise ValueError("Cobertura pontuada difere; comparação de qualidade recusada.")

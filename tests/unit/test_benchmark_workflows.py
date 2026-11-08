@@ -209,6 +209,7 @@ def test_runtime_comparison_accepts_partial_runs_without_claiming_quality(worksp
     assert result["metrics"] == {}
     assert result["runtime"]["base"]["failures"] == 1
     assert result["runtime_deltas"]["total_seconds"] == 0
+    assert result["runtime_deltas"]["failures_by_kind"]["process_failed"] == 0
 
 
 @pytest.mark.parametrize("change", ["prediction", "core", "system", "metadata"])
