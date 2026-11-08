@@ -75,6 +75,60 @@ páginas consecutivas por caso por padrão; `--window-size 1` seleciona uma pág
 por caso. Não cruza lacunas ou documentos, mas janelas podem se sobrepor. Omni
 usa uma página por caso. O limite conta casos, não páginas únicas.
 
+## Amostra de desafio OmniDocBench-80
+
+O repositório inclui uma amostra fixa e versionada de 80 páginas, dividida em
+cinco grupos: `texto_comum`, `ocr_dificil`, `tabelas`, `formulas` e
+`layout_complexo`. Cada grupo tem 16 páginas: 4 fáceis, 6 médias e 6 difíceis,
+classificadas por heurísticas próprias da categoria. Cada página aparece em
+apenas um grupo. A prioridade na resolução de sobreposição é OCR, fórmulas,
+texto comum, tabelas e layout.
+
+Com seed 42, o gerador escolhe páginas dentro das faixas de dificuldade enquanto
+procura aproximar as distribuições marginais de origem, idioma e layout do
+snapshot original. Também considera diversidade de características dentro de
+cada categoria. Para resolver páginas elegíveis em mais de um grupo, a prioridade
+é OCR, fórmulas, texto comum, tabelas e layout. A distância de variação total
+(TV) entre a amostra e a população está registrada no manifesto para origem,
+idioma, layout e a combinação origem×idioma; na seleção fixada, os valores são
+0,030, 0,021, 0,025 e 0,055, respectivamente. TV mede essas distribuições
+separadamente e não assegura que a distribuição conjunta de origem, idioma e
+layout ou os resultados por categoria representem o dataset.
+
+IDs, caminhos de imagem e índices de registro original são únicos. O manifesto
+guarda o índice zero-based e o caminho exato da imagem em `OmniDocBench.json`;
+consulte [`selections/omnidocbench-80-mapping.csv`](../selections/omnidocbench-80-mapping.csv)
+para revisar o vínculo de cada página. A preparação valida esses vínculos contra
+as anotações e recusa revisão, hash ou registros divergentes.
+
+```bash
+uv run --extra datasets acessilia-benchmark run omnidocbench \
+  --run omni80 --acessilia-repo ../acessilia \
+  --selection-file selections/omnidocbench-80.json
+```
+
+Para separar as etapas, passe o mesmo `--selection-file` a `prepare` e depois
+use `predict` e `evaluate`. Não combine a seleção com `--limit`, `smoke` ou uma
+seed diferente de 42. Cada caso OmniDocBench continua sendo uma página. O plano
+da rodada copia e verifica o manifesto. Os relatórios incluem médias e cobertura
+por grupo; `compare` também calcula os deltas por grupo, desde que a seleção e a
+cobertura de métricas coincidam.
+
+Esta é uma amostra balanceada por desafios, não pela frequência natural desses
+desafios no dataset. O `Overall local` é calculado sem pesos sobre as 80 páginas
+e não estima o desempenho no OmniDocBench completo nem corresponde a resultado
+oficial. Os relatórios mostram médias e cobertura por categoria e dificuldade;
+as distâncias TV são diagnósticos de composição, não pesos ou correções do score.
+Para estimar o desempenho médio do conjunto, execute o dataset completo ou monte
+uma amostra probabilística com um desenho de seleção apropriado.
+
+O JSON original não oferece um identificador explícito de documento. Quando o
+nome do arquivo sugere um documento, o manifesto o registra como inferência; isso
+não prova que os casos sejam documentalmente independentes. A amostra não é um
+holdout nem uma evidência de generalização para documentos inéditos. Para medir
+generalização documental, é necessário um identificador de documento confiável e
+uma separação feita por documento.
+
 Para o Core, cada janela Dr é convertida em PDF rasterizado a 72 dpi por
 PyMuPDF. JPEGs são preservados sem recompressão; o PDF não tem camada textual nem
 referências. Essa entrada fica registrada no plano.

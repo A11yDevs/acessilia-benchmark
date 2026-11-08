@@ -29,6 +29,59 @@ Dr.DocBench usa duas páginas por caso por padrão. Use `--window-size 1` para
 comparar páginas individuais ou alinhar a unidade com uma submissão. No Omni,
 cada caso sempre representa uma página.
 
+## Reproduzir o split OmniDocBench-80
+
+O manifesto `selections/omnidocbench-80.json` fixa 80 páginas da revisão
+registrada, sem repetir IDs, caminhos ou índices de registro original. A seleção
+mantém cinco grupos de desafio — texto comum, OCR difícil, tabelas, fórmulas e
+layout complexo — com 16 páginas em cada grupo. Cada grupo contém 4 páginas fáceis,
+6 médias e 6 difíceis, segundo heurísticas específicas da categoria.
+
+O gerador usa a seed 42. Dentro das faixas de dificuldade, escolhe páginas para
+manter próximas do snapshot as distribuições marginais de origem, idioma e layout,
+além de diversificar características internas de cada desafio. Para resolver
+casos elegíveis em mais de um grupo, a prioridade é OCR, fórmulas, texto comum,
+tabelas e layout; uma página selecionada fica indisponível para os demais grupos.
+O manifesto registra as contagens da população, da amostra e a distância de
+variação total (TV) para origem, idioma, layout e a combinação origem×idioma. Na
+versão fixada, TV é 0,030 para origem, 0,021 para idioma, 0,025 para layout e
+0,055 para origem×idioma. Esses valores medem essas distribuições separadamente;
+não medem a distribuição conjunta de origem, idioma e layout, nem a
+representatividade dos resultados por categoria.
+
+As cotas iguais por desafio mantêm deliberadamente casos difíceis na amostra e
+alteram a composição natural do dataset. Portanto, o `Overall local` é a média
+sem pesos destas 80 páginas; não é uma estimativa do OmniDocBench completo, um
+holdout ou um resultado oficial. O manifesto registra para cada página o índice
+zero-based e o caminho exato no JSON original. O arquivo
+`selections/omnidocbench-80-mapping.csv` permite revisar os 80 vínculos. Execute
+a rodada completa:
+
+```bash
+uv run --extra datasets acessilia-benchmark run omnidocbench \
+  --run omni80 --acessilia-repo ../acessilia \
+  --selection-file selections/omnidocbench-80.json
+```
+
+Ou prepare previsões para inferência/importação posterior:
+
+```bash
+uv run acessilia-benchmark prepare omnidocbench --run omni80 \
+  --selection-file selections/omnidocbench-80.json
+uv run acessilia-benchmark predict --run omni80 --acessilia-repo ../acessilia
+uv run acessilia-benchmark evaluate --run omni80 --profile full
+```
+
+O comando copia o manifesto para a rodada e sela sua identidade no plano. A
+seleção só aceita o snapshot de anotações correspondente, usa `--seed 42` e não
+pode ser combinada com `--limit` ou `smoke`. Os relatórios mostram métricas e
+cobertura por categoria de desafio e por faixa de dificuldade. `compare` calcula
+deltas para a mesma seleção e cobertura.
+
+O JSON oficial não fornece um identificador explícito de documento; o manifesto
+inclui apenas uma inferência pelo nome do arquivo quando possível. A seleção não
+comprova independência documental nem mede generalização para documentos inéditos.
+
 `compare` recusa diferenças de dataset, revisão, seleção, agrupamento,
 referências, avaliador, ambiente de avaliação ou cobertura. Calcula deltas com
 a direção correta: edit distance menor é melhor; TEDS, CDM e Overall maiores

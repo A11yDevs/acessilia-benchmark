@@ -57,6 +57,7 @@ limites, consulte [avaliação](evaluation/README.md).
 | Opção | Uso |
 | --- | --- |
 | `--limit 10` | Executar uma amostra de dez casos; sem essa opção, roda todos |
+| `--selection-file selections/omnidocbench-80.json` | Reproduzir a amostra fixa do OmniDocBench, agrupada por desafio e dificuldade |
 | `--window-size 1` | Usar uma página por caso Dr.DocBench; o padrão é duas |
 | `--engine structure --provider docling` | Medir um provider da Toolbox sem executar o pipeline completo |
 | `--run NOME` | Definir o nome da rodada |
@@ -80,8 +81,8 @@ uv run acessilia-benchmark compare baseline candidate --profile full \
 tem avisos ou evidência insuficiente, para um gate não aceitar silenciosamente
 uma rodada que exige revisão.
 Consulte [fluxos](docs/workflows.md) para retomada, importação de previsões,
-submissão e Slurm. Os comandos individuais `prepare`, `predict` e `evaluate`
-permitem controlar cada etapa.
+submissão, o split OmniDocBench-80 e Slurm. Os comandos individuais `prepare`,
+`predict` e `evaluate` permitem controlar cada etapa.
 
 ## Docker
 
