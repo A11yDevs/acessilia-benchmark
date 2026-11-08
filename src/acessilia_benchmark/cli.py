@@ -38,6 +38,11 @@ def main():
     sub.add_argument("--data-dir", type=Path, default=workspace.data)
     sub.add_argument("--limit", type=int, default=0, help="Casos; padrão: todo o dataset (0).")
     sub.add_argument("--seed", type=int, default=42)
+    sub.add_argument(
+        "--selection-file",
+        type=Path,
+        help="Manifesto fixo OmniDocBench-80, agrupado por desafio e dificuldade.",
+    )
     sub.add_argument("--profile", choices=["auto", "basic", "full", "runtime"], default="auto")
     sub.add_argument("--timeout", type=float, default=1800, help="Segundos por caso.")
     sub.add_argument("--evaluation-timeout", type=float, default=1800)
@@ -61,6 +66,11 @@ def main():
                 "--limit", type=int, default=0, help="Número de casos; padrão: todo o dataset (0)."
             )
             sub.add_argument("--seed", type=int, default=42)
+            sub.add_argument(
+                "--selection-file",
+                type=Path,
+                help="Manifesto fixo OmniDocBench-80, agrupado por desafio e dificuldade.",
+            )
     sub = commands.add_parser("predict")
     sub.add_argument("--run", required=True)
     sub.add_argument("--acessilia-repo", type=Path, required=True)
@@ -125,6 +135,7 @@ def main():
                 window_size=args.window_size,
                 engine=args.engine,
                 provider=args.provider,
+                selection_file=args.selection_file,
             )
         elif args.action == "submit":
             submit(workspace, args.run)
@@ -163,6 +174,7 @@ def main():
                 args.limit,
                 args.seed,
                 window_size=args.window_size,
+                selection_file=args.selection_file,
             )
         elif args.action == "smoke":
             smoke(

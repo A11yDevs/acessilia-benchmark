@@ -7,19 +7,61 @@ from pathlib import Path
 from ..io import digest, local_path, read, seal, verify_seal, write
 from .catalog import load_registry, verify
 from .sampling import ordered_cases
+from .selection import case_selection, manifest_identity, validate_manifest, validate_run_selection
 from .workspace import Workspace
 
 
 def prepare(
-    workspace: Workspace, dataset, name, data_dir, limit, seed, fixture=False, window_size=2
+    workspace: Workspace,
+    dataset,
+    name,
+    data_dir,
+    limit,
+    seed,
+    fixture=False,
+    window_size=2,
+    selection_file=None,
 ):
     destination = workspace.run_dir(name)
     if destination.exists():
         raise ValueError("Rodada já existe; escolha outro nome para preservar os resultados.")
+    if selection_file and fixture:
+        raise ValueError("A seleção fixa não pode ser usada em autoverificações.")
+    if selection_file and limit:
+        raise ValueError("A seleção fixa define seus próprios 80 casos; não combine com --limit.")
+    if selection_file and dataset != "omnidocbench":
+        raise ValueError("--selection-file está disponível apenas para OmniDocBench.")
     if fixture and load_registry(workspace)[dataset]["evaluator"] is None:
         raise ValueError("Dataset sem referências; smoke indisponível. Use prepare e predict.")
     verify(dataset, load_registry(workspace)[dataset], data_dir)
     cases = list(ordered_cases(workspace, dataset, data_dir, seed, window_size))
+    selection = None
+    selection_manifest = None
+    if selection_file:
+        if seed != 42:
+            raise ValueError(
+                "A seleção fixa usa --seed 42; a seed do manifesto não pode ser alterada."
+            )
+        selection_source = Path(selection_file).expanduser().resolve()
+        selection_manifest = read(selection_source)
+        snapshot = data_dir / dataset / load_registry(workspace)[dataset]["revision"]
+        annotations = snapshot / "OmniDocBench.json"
+        rows_by_id = validate_manifest(
+            selection_manifest,
+            dataset,
+            load_registry(workspace)[dataset]["revision"],
+            digest(annotations),
+            cases,
+            read(annotations),
+        )
+        cases_by_id = {case["id"]: case for case in cases}
+        selected_cases = []
+        for case_id in selection_manifest["case_ids"]:
+            category, row = rows_by_id[case_id]
+            case = dict(cases_by_id[case_id])
+            case["selection_group"] = case_selection(category, row)
+            selected_cases.append(case)
+        cases = selected_cases
     if fixture:
 
         def categories(case):
@@ -47,6 +89,9 @@ def prepare(
     if len(predictions) != len(set(predictions)):
         raise ValueError("Colisão de nomes de previsões.")
     destination.mkdir(parents=True)
+    if selection_manifest is not None:
+        shutil.copyfile(selection_source, destination / "selection.json")
+        selection = manifest_identity(selection_manifest, destination / "selection.json")
     if dataset == "omnidocbench":
         pages = [case.pop("reference_pages")[0] for case in cases]
         write(destination / "ground-truth.json", pages)
@@ -65,6 +110,7 @@ def prepare(
         "limit": limit,
         "fixture": fixture,
         "cases": cases,
+        "selection": selection,
         "unique_pages": len(inputs),
         "windows": len(cases),
         "evaluator": load_registry(workspace)[dataset]["evaluator"],
@@ -94,6 +140,7 @@ def load_plan(workspace: Workspace, name):
     verify_seal(destination / "plan.json")
     if not isinstance(plan.get("fixture"), bool) or not plan.get("cases"):
         raise ValueError("Plano inválido: fixture/casos.")
+    validate_run_selection(destination, plan)
     if len({case["id"] for case in plan["cases"]}) != len(plan["cases"]):
         raise ValueError("IDs de casos duplicados.")
     for case in plan["cases"]:

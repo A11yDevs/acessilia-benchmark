@@ -49,6 +49,7 @@ def _signature(plan):
         "dataset": plan["dataset"],
         "revision": plan["dataset_revision"],
         "fixture": plan["fixture"],
+        "selection": plan.get("selection"),
         "evaluator": plan["evaluator"],
         "lock": plan["environment_lock_sha256"],
         "cases": sorted(
@@ -79,7 +80,37 @@ def _metrics(summary):
         for metric, value in metrics.items():
             if metric in {"Edit_dist", "TEDS", "CDM"}:
                 walk(value, (component, metric), -1 if metric == "Edit_dist" else 1)
+    for group, details in summary.get("selection_groups", {}).items():
+        for component, metrics in details["metrics"].items():
+            for metric, detail in metrics.items():
+                value = detail.get("value")
+                if value is not None and (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                ):
+                    raise ValueError(
+                        f"Métrica inválida: selection_group/{group}/{component}/{metric}"
+                    )
+                direction = -1 if metric == "Edit_dist" else 1
+                values_tuple = (None if value is None else float(value), direction)
+                values_path = ("selection_group", group, component, metric)
+                values_key = "/".join(values_path)
+                if values_key in values:
+                    raise ValueError(f"Métrica duplicada: {values_key}")
+                values[values_key] = values_tuple
     return values
+
+
+def _selection_group_coverage(summary):
+    groups = {
+        group: {
+            component: {metric: detail["coverage"] for metric, detail in metrics.items()}
+            for component, metrics in details["metrics"].items()
+        }
+        for group, details in summary.get("selection_groups", {}).items()
+    }
+    return groups
 
 
 def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=None):
@@ -96,6 +127,7 @@ def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=No
         "candidate": candidate,
         "profile": profile,
         "fixture": left_plan["fixture"],
+        "selection": left_plan.get("selection"),
         "tolerance": tolerance,
         "leaderboard_comparable": False,
         "quality_regressions": [],
@@ -142,6 +174,8 @@ def compare(workspace, base, candidate, profile="full", tolerance=0.0, output=No
     if profile != "runtime":
         if left["coverage"] != right["coverage"]:
             raise ValueError("Cobertura pontuada difere; comparação de qualidade recusada.")
+        if _selection_group_coverage(left) != _selection_group_coverage(right):
+            raise ValueError("Cobertura de métricas por grupo de seleção difere.")
         if left["overall_details"]["protocol"] != right["overall_details"]["protocol"]:
             raise ValueError("Protocolos Overall diferentes.")
         if left.get("evaluator_runtime") != right.get("evaluator_runtime"):

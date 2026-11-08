@@ -3,7 +3,9 @@
 import json
 import math
 import os
+from collections import Counter, defaultdict
 from pathlib import Path
+from statistics import mean
 from urllib.parse import quote
 
 from .core.scoring import overall_details
@@ -128,6 +130,29 @@ def summarize(destination, plan, artifacts, metrics, profile):
             for name in ("text_block", "table", "display_formula", "reading_order")
         },
     }
+    selection_groups = _selection_group_summary(plan, artifacts)
+    if selection_groups is not None:
+        summary["selection_groups"] = selection_groups
+        summary["selection_design"] = {
+            "policy": plan["selection"]["policy"],
+            "population_size": plan["selection"]["population_size"],
+            "sample_size": len(plan["cases"]),
+            "seed": plan["selection"]["seed"],
+            "category_order": plan["selection"]["category_order"],
+            "category_counts": plan["selection"]["category_counts"],
+            "difficulty_quotas": plan["selection"]["difficulty_quotas"],
+            "difficulty_counts": plan["selection"]["difficulty_counts"],
+            "eligible_candidates_by_category": plan["selection"]["eligible_candidates_by_category"],
+            "population_by_source": plan["selection"]["population_by_source"],
+            "sample_by_source": plan["selection"]["sample_by_source"],
+            "population_by_language": plan["selection"]["population_by_language"],
+            "sample_by_language": plan["selection"]["sample_by_language"],
+            "population_by_source_language": plan["selection"]["population_by_source_language"],
+            "sample_by_source_language": plan["selection"]["sample_by_source_language"],
+            "population_by_layout": plan["selection"]["population_by_layout"],
+            "sample_by_layout": plan["selection"]["sample_by_layout"],
+            "representativeness": plan["selection"]["representativeness"],
+        }
     summary["processing"] = processing_assessment(
         destination,
         plan,
@@ -213,7 +238,7 @@ def summarize(destination, plan, artifacts, metrics, profile):
         "Perfil basic: sem CDM e sem score Overall comparável ao ranking oficial."
         if profile == "basic"
         else (
-            f"Perfil full: Overall local = {overall:.4f} (0–100)."
+            f"Perfil full: Overall local na amostra de 80 páginas = {overall:.4f} (0–100; sem ponderação)."
             if overall is not None
             else "Perfil full: Overall indisponível. " + aggregation["reason"]
         ),
@@ -224,6 +249,21 @@ def summarize(destination, plan, artifacts, metrics, profile):
         json.dumps(summary["metrics"], indent=2, ensure_ascii=False),
         "```",
     ]
+    if selection_groups is not None:
+        lines += [
+            "",
+            "## Métricas por categoria de desafio",
+            "",
+            "A seleção reserva 16 páginas por categoria, com 4 fáceis, 6 médias e 6 difíceis. "
+            "Cada página aparece uma única vez. Estas médias descrevem as páginas selecionadas; "
+            "as cotas de desafio e os desvios de composição impedem interpretá-las como "
+            "estimativas do conjunto completo. Os valores de TV em `selection_design` "
+            "comparam as margens de origem, idioma e layout com o snapshot; não são pesos.",
+            "",
+            "```json",
+            json.dumps(selection_groups, indent=2, ensure_ascii=False),
+            "```",
+        ]
     lines[5:5] = [
         "",
         "## Diagnóstico do processamento",
@@ -293,6 +333,111 @@ def summarize(destination, plan, artifacts, metrics, profile):
         lines += ["    " + line for line in str(block["gt"]).splitlines()]
         lines += ["", "Previsão:", ""] + ["    " + line for line in str(block["pred"]).splitlines()]
     (artifacts / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _selection_group_summary(plan, artifacts):
+    selection = plan.get("selection")
+    if selection is None:
+        return None
+
+    case_groups = defaultdict(list)
+    for case in plan["cases"]:
+        group = case.get("selection_group")
+        if not isinstance(group, dict) or group.get("category") not in selection["category_order"]:
+            raise ValueError(f"Metadados do grupo de seleção ausentes: {case['id']}.")
+        case_groups[group["category"]].append(case)
+
+    result_dir = artifacts / "result"
+    page_scores = {}
+    row_scores = {}
+    specs = (
+        ("text_block", "Edit_dist", "text_blocks", "page"),
+        ("table", "TEDS", "tables", "rows"),
+        ("display_formula", "Edit_dist", "display_formulas", "page"),
+        ("display_formula", "CDM", "display_formulas", "rows"),
+        ("reading_order", "Edit_dist", "reading_order_blocks", "page"),
+    )
+    for component, metric, _, source in specs:
+        if source == "page":
+            files = list(result_dir.glob(f"*_{component}_per_page_edit.json"))
+            if len(files) > 1:
+                raise ValueError(f"Métricas por página ambíguas: {component}.")
+            values = read(files[0]) if files else {}
+            if not isinstance(values, dict):
+                raise ValueError(f"Métricas por página inválidas: {component}.")
+            scores = {}
+            for image, value in values.items():
+                number = _finite_metric(value)
+                if number is not None:
+                    scores[Path(str(image)).stem] = number
+            page_scores[(component, metric)] = scores
+        else:
+            files = list(result_dir.glob(f"*_{component}_result.json"))
+            if len(files) > 1:
+                raise ValueError(f"Artefatos de componente ambíguos: {component}.")
+            rows = read(files[0]) if files else []
+            if not isinstance(rows, list):
+                raise ValueError(f"Artefatos de componente inválidos: {component}.")
+            grouped = defaultdict(list)
+            for row in rows:
+                number = _finite_metric((row.get("metric") or {}).get(metric))
+                if number is not None:
+                    grouped[Path(str(row.get("img_id", ""))).stem].append(number)
+            row_scores[(component, metric)] = {
+                image: mean(values) for image, values in grouped.items()
+            }
+
+    output = {}
+    for category in selection["category_order"]:
+        cases = case_groups[category]
+        document_groups = {
+            case["selection_group"]["document_group"]
+            for case in cases
+            if case["selection_group"]["document_group"]
+        }
+        group_selection = [case["selection_group"] for case in cases]
+        group = {
+            "pages": len(cases),
+            "eligible_candidates": selection["eligible_candidates_by_category"][category],
+            "difficulty_bands": dict(Counter(item["difficulty_band"] for item in group_selection)),
+            "sample_sources": dict(Counter(item["data_source"] for item in group_selection)),
+            "sample_languages": dict(Counter(item["language"] for item in group_selection)),
+            "sample_layouts": dict(Counter(item["layout"] for item in group_selection)),
+            "inferred_document_groups": len(document_groups),
+            "pages_without_inferred_document_group": sum(
+                case["selection_group"]["document_group"] is None for case in cases
+            ),
+            "metrics": {},
+        }
+        for component, metric, applicable_field, _source in specs:
+            scores = page_scores.get((component, metric), row_scores.get((component, metric), {}))
+            applicable = [case for case in cases if case["selection_group"][applicable_field] > 0]
+            scored = [case for case in applicable if case["id"] in scores]
+            unscored = [case["id"] for case in applicable if case["id"] not in scores]
+            group["metrics"].setdefault(component, {})[metric] = {
+                "value": mean([scores[case["id"]] for case in scored]) if scored else None,
+                "aggregation": "unweighted_mean_over_scored_pages",
+                "scale": "fraction 0–1",
+                "direction": "lower_is_better" if metric == "Edit_dist" else "higher_is_better",
+                "coverage": {
+                    "expected_pages": len(cases),
+                    "applicable_pages": len(applicable),
+                    "scored_pages": len(scored),
+                    "unscored_applicable_pages": unscored,
+                },
+            }
+        output[category] = group
+    return output
+
+
+def _finite_metric(value):
+    if value is None or (
+        isinstance(value, str) and value.lower() in {"nan", "infinity", "-infinity"}
+    ):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
 
 
 def normalize_numbers(value):

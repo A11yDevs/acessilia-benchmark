@@ -6,7 +6,9 @@ from uuid import uuid4
 
 from ..core.catalog import download, load_registry
 from ..core.runs import prepare
+from ..core.selection import validate_manifest
 from ..core.workspace import Workspace
+from ..io import digest, read
 from .doctor import resolve_python
 from .evaluation import evaluate
 from .inference import predict
@@ -32,9 +34,16 @@ def run_dataset(
     window_size: int = 2,
     engine: str = "pipeline",
     provider: str | None = None,
+    selection_file: Path | None = None,
 ) -> Path:
     if engine not in {"pipeline", "structure"} or (provider and engine != "structure"):
         raise ValueError("Provider explícito requer --engine structure.")
+    if selection_file and dataset != "omnidocbench":
+        raise ValueError("--selection-file está disponível apenas para OmniDocBench.")
+    if selection_file and limit:
+        raise ValueError("A seleção fixa define seus próprios 80 casos; não combine com --limit.")
+    if selection_file and seed != 42:
+        raise ValueError("A seleção fixa usa --seed 42; a seed do manifesto não pode ser alterada.")
     if window_size not in (1, 2):
         raise ValueError("Janela deve ter uma ou duas páginas.")
     if engine == "structure" and dataset != "omnidocbench" and window_size != 1:
@@ -61,13 +70,35 @@ def run_dataset(
     manifest = data_dir / dataset / spec["revision"] / "download-manifest.json"
     if not manifest.is_file() and not offline:
         download(dataset, spec, data_dir)
+    if selection_file:
+        selection_path = selection_file.expanduser().resolve()
+        selection_manifest = read(selection_path)
+        annotations = data_dir / dataset / spec["revision"] / "OmniDocBench.json"
+        if not annotations.is_file():
+            raise ValueError(f"Anotações do OmniDocBench ausentes: {annotations}")
+        validate_manifest(
+            selection_manifest,
+            dataset,
+            spec["revision"],
+            digest(annotations),
+            original_records=read(annotations),
+        )
     if not skip_setup:
         setup(workspace)
         if profile == "full":
             install_render_tools(workspace)
     if profile != "runtime":
         runtime_versions(workspace, profile, dataset)
-    prepare(workspace, dataset, name, data_dir, limit, seed, window_size=window_size)
+    prepare(
+        workspace,
+        dataset,
+        name,
+        data_dir,
+        limit,
+        seed,
+        window_size=window_size,
+        selection_file=selection_file,
+    )
     predict(workspace, name, repo, selected, timeout, engine=engine, provider=provider)
     evaluate(workspace, name, profile, timeout=evaluation_timeout)
     report = destination / ("runtime-report" if profile == "runtime" else profile) / "report.md"
